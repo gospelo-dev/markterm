@@ -5,6 +5,9 @@ import { detectProtocol, displayInline, type Protocol } from "./protocol/index.j
 import { estimateViewportWidth } from "./terminal.js"
 import { queryTerminalColors } from "./colorquery.js"
 import { deriveTheme, fallbackTheme, type ThemeColors } from "./render/themes.js"
+import pkg from "../package.json" with { type: "json" }
+
+const VERSION: string = pkg.version
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -26,7 +29,7 @@ const { values, positionals } = parseArgs({
 })
 
 if (values.version) {
-  console.log("markterm 0.1.0")
+  console.log(`markterm ${VERSION}`)
   process.exit(0)
 }
 

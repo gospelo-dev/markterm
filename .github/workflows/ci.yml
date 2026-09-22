@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "release/**"]
+  pull_request:
+    branches: [main, "release/**"]
+
+jobs:
+  # Job id doubles as the required status check name in the branch rulesets
+  # (docs/operations/branch_strategy.md). Keep it stable.
+  required-check:
+    name: required-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test
+
+      - name: Build
+        run: bun run build
+
+      - name: Smoke test the built CLI
+        run: |
+          bun dist/cli.js --version
+          echo "# CI" | bun dist/cli.js -o /tmp/ci.png -t light -w 300 -s 1
+          test -s /tmp/ci.png
