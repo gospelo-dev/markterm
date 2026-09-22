@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { resolve, dirname } from "path"
 import { parseArgs } from "util"
 import { markdownToImage, markdownToImageBands, dispose } from "./render/screenshot.js"
 import { detectProtocol, displayInline, maxBandHeightFor, type Protocol } from "./protocol/index.js"
@@ -106,6 +107,7 @@ const baseWidth = values.width === "auto"
 const width = Math.round(baseWidth * (100 / zoom))
 
 let source: string
+let basePath: string
 if (positionals.length > 0) {
   const file = Bun.file(positionals[0])
   if (!(await file.exists())) {
@@ -113,12 +115,14 @@ if (positionals.length > 0) {
     process.exit(1)
   }
   source = await file.text()
+  basePath = dirname(resolve(positionals[0]))
 } else {
   const chunks: Uint8Array[] = []
   for await (const chunk of Bun.stdin.stream()) {
     chunks.push(chunk)
   }
   source = Buffer.concat(chunks).toString("utf-8")
+  basePath = process.cwd()
 }
 
 if (!source.trim()) {
@@ -141,6 +145,7 @@ const renderOptions = {
   fontSize,
   deviceScaleFactor: scale,
   mermaidVersion,
+  basePath,
 }
 
 // Ghostty rejects Kitty Graphics images taller than 10000 px; iTerm2 rejects

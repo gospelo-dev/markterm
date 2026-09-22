@@ -1,7 +1,19 @@
+import { resolve, dirname, extname } from "path"
 import { chromium, type Browser, type Page } from "playwright"
 import { renderMarkdown } from "./markdown.js"
 import { buildHtml, type TemplateOptions } from "./template.js"
 import { chooseCuts, MEASURE_CANDIDATES_JS, type MeasuredCandidates } from "./bands.js"
+
+const MIME_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".ico": "image/x-icon",
+}
 
 let browserInstance: Browser | null = null
 
@@ -20,6 +32,7 @@ export async function dispose(): Promise<void> {
 
 export type ScreenshotOptions = TemplateOptions & {
   deviceScaleFactor?: number
+  basePath?: string
 }
 
 export type BandOptions = ScreenshotOptions & {
@@ -51,6 +64,46 @@ async function withPage<T>(
 
   try {
     await page.setContent(html, { waitUntil: "networkidle" })
+
+    const basePath = opts?.basePath ?? process.cwd()
+    const srcs: string[] = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("img"))
+        .map((img) => img.getAttribute("src") ?? "")
+        .filter((s) => s && !s.startsWith("data:") && !s.startsWith("http:") && !s.startsWith("https:"))
+    )
+    if (srcs.length > 0) {
+      const dataUriMap: Record<string, string> = {}
+      for (const src of srcs) {
+        if (dataUriMap[src]) continue
+        let filePath: string
+        if (src.startsWith("file://")) {
+          filePath = decodeURIComponent(new URL(src).pathname)
+        } else if (src.startsWith("/")) {
+          filePath = src
+        } else {
+          filePath = resolve(basePath, decodeURIComponent(src))
+        }
+        try {
+          const file = Bun.file(filePath)
+          if (await file.exists()) {
+            const bytes = new Uint8Array(await file.arrayBuffer())
+            const ext = extname(filePath).toLowerCase()
+            const mime = MIME_TYPES[ext] ?? "application/octet-stream"
+            const b64 = Buffer.from(bytes).toString("base64")
+            dataUriMap[src] = `data:${mime};base64,${b64}`
+          }
+        } catch {}
+      }
+      if (Object.keys(dataUriMap).length > 0) {
+        await page.evaluate((map) => {
+          for (const img of document.querySelectorAll("img")) {
+            const src = img.getAttribute("src")
+            if (src && map[src]) img.setAttribute("src", map[src])
+          }
+        }, dataUriMap)
+      }
+    }
+
     await page.waitForFunction(() => {
       const els = document.querySelectorAll("pre.mermaid")
       return Array.from(els).every((el) => el.querySelector("svg") !== null)
