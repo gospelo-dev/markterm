@@ -1,5 +1,12 @@
 const CHUNK_SIZE = 4096
 
+/**
+ * Ghostty discards Kitty Graphics images with a width or height above this
+ * value, silently when q=2. Renders taller than this are cut into bands
+ * (see render/bands.ts); Kitty and WezTerm get the same treatment, harmlessly.
+ */
+export const KITTY_MAX_IMAGE_DIMENSION = 10000
+
 function base64Encode(bytes: Uint8Array): string {
   if (typeof Buffer !== "undefined") return Buffer.from(bytes).toString("base64")
   let bin = ""

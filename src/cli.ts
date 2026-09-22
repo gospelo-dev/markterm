@@ -1,10 +1,13 @@
 #!/usr/bin/env bun
 import { parseArgs } from "util"
-import { markdownToImage, dispose } from "./render/screenshot.js"
-import { detectProtocol, displayInline, type Protocol } from "./protocol/index.js"
+import { markdownToImage, markdownToImageBands, dispose } from "./render/screenshot.js"
+import { detectProtocol, displayInline, maxBandHeightFor, type Protocol } from "./protocol/index.js"
 import { estimateViewportWidth } from "./terminal.js"
 import { queryTerminalColors } from "./colorquery.js"
 import { deriveTheme, fallbackTheme, type ThemeColors } from "./render/themes.js"
+import pkg from "../package.json" with { type: "json" }
+
+const VERSION: string = pkg.version
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -26,7 +29,7 @@ const { values, positionals } = parseArgs({
 })
 
 if (values.version) {
-  console.log("markterm 0.1.0")
+  console.log(`markterm ${VERSION}`)
   process.exit(0)
 }
 
@@ -123,13 +126,30 @@ if (!source.trim()) {
   process.exit(1)
 }
 
-const png = await markdownToImage(source, {
+const PROTOCOLS: Protocol[] = ["kitty", "iterm2", "sixel", "file"]
+let proto: Protocol
+if (values.protocol && PROTOCOLS.includes(values.protocol as Protocol)) {
+  proto = values.protocol as Protocol
+} else {
+  if (values.protocol) console.error(`Unknown protocol "${values.protocol}", using auto-detection.`)
+  proto = detectProtocol()
+}
+
+const renderOptions = {
   colors,
   width,
   fontSize,
   deviceScaleFactor: scale,
   mermaidVersion,
-})
+}
+
+// Ghostty rejects Kitty Graphics images taller than 10000 px; iTerm2 rejects
+// 10000 px and shows at most 255 rows per image. Tall renders are therefore
+// cut into bands for display. The temp file and -o always get the whole render.
+const maxBandHeight = values.output ? null : maxBandHeightFor(proto, Math.round(width * scale))
+const { png, bands } = maxBandHeight !== null
+  ? await markdownToImageBands(source, { ...renderOptions, maxBandHeight })
+  : await markdownToImage(source, renderOptions).then((png) => ({ png, bands: [png] }))
 
 const tmpDir = process.env.TMPDIR || "/tmp/"
 const tmpPath = `${tmpDir}markterm-${Date.now()}.png`
@@ -139,15 +159,13 @@ if (values.output) {
   await Bun.write(values.output, png)
   console.log(`Saved to ${values.output} (${png.length} bytes)`)
 } else {
-  const proto = (values.protocol as Protocol | undefined) ?? undefined
-  const escape = displayInline(png, { protocol: proto })
+  const escape = displayInline(bands, { protocol: proto })
   if (escape) {
     process.stdout.write(escape)
     process.stdout.write("\n")
     console.error(`${tmpPath}`)
   } else {
-    const detected = detectProtocol()
-    if (detected === "sixel") {
+    if (proto === "sixel") {
       console.error("Sixel display requires img2sixel (libsixel).")
       console.error("  macOS:  brew install libsixel")
       console.error("  Linux:  apt install libsixel-bin")

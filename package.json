@@ -20,6 +20,10 @@
     "type": "git",
     "url": "git+https://github.com/gospelo-dev/markterm.git"
   },
+  "homepage": "https://github.com/gospelo-dev/markterm#readme",
+  "bugs": {
+    "url": "https://github.com/gospelo-dev/markterm/issues"
+  },
   "type": "module",
   "bin": {
     "markterm": "./dist/cli.js"
@@ -30,12 +34,16 @@
   "files": [
     "dist",
     "src",
-    "LICENSE"
+    "!src/test",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test",
     "build": "bun build src/cli.ts --outfile dist/cli.js --target bun --external playwright",
     "postbuild": "chmod +x dist/cli.js",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run typecheck && bun test && bun run build"
   },
   "dependencies": {
     "marked": "^15.0.7",
