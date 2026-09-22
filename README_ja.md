@@ -24,11 +24,11 @@ Markdown ファイルをヘッドレス Chromium でスタイリング付きに�
 | プロトコル | ターミナル | 自動検出の条件 |
 |-----------|-----------|----------------|
 | Kitty Graphics | Ghostty, Kitty, WezTerm | `TERM=xterm-ghostty`、`TERM_PROGRAM` に `ghostty` / `kitty` / `WezTerm` を含む、または `GHOSTTY_RESOURCES_DIR`、`GHOSTTY_BIN_DIR`、`KITTY_WINDOW_ID`、`KITTY_PID`、`WEZTERM_PANE` のいずれかが設定されている |
-| iTerm2 Inline Images | iTerm2 | `TERM_PROGRAM=iTerm.app` または `LC_TERMINAL=iTerm2` |
+| iTerm2 Inline Images | iTerm2 (1 MiB を超える描画結果は 3.5 以降) | `TERM_PROGRAM=iTerm.app` または `LC_TERMINAL=iTerm2` |
 | Sixel | foot, xterm, mlterm, Konsole, mintty (Git Bash), Black Box | `TERM_PROGRAM` に `foot` / `mlterm` / `konsole` / `mintty` / `blackbox` を含む、または `TERM=xterm`。かつ `img2sixel` が `PATH` にある場合のみ選択 |
 | file（フォールバック） | すべて | 上記のいずれにも該当しない場合。インライン表示の代わりに PNG を一時ファイルに保存してパスを表示します |
 
-検出は表の順に行われます。`markterm --help` で現在のターミナルで検出されたプロトコルを確認できます。tmux や screen などのマルチプレクサは特別扱いしていません。画像のエスケープシーケンスは通常マルチプレクサを通過しないため、その中では `file` フォールバックになると考えてください。
+検出は表の順に行われます。`markterm --help` で現在のターミナルで検出されたプロトコルを確認できます。tmux や screen などのマルチプレクサは特別扱いしていません。画像のエスケープシーケンスは通常マルチプレクサを通過しないため、その中では `file` フォールバックになると考えてください。iTerm2 で `-p kitty` を強制しても表示されません (iTerm2 3.7.2 で確認。何も描画されない)。iTerm2 では自動検出される `iterm2` プロトコルを使ってください。
 
 ## インストール
 
@@ -107,6 +107,8 @@ markterm は固定の配色を持ちません。実行のたびにターミナ�
 - `-w <px>` はビューポート幅を直接指定します。
 - `-z <percent>` はビューポート幅を `100 ÷ zoom` 倍にします。`-z 50` ならページを 2 倍の幅でレイアウトしてからターミナル幅で表示するので、内容が半分の大きさに見えます。画面上の画像の幅は変わりません。
 - 画像はターミナルの列数を指定して転送されるため、Kitty Graphics と iTerm2 では常にターミナル幅いっぱいに表示されます。Sixel はピクセルサイズそのままで出力します。
+- **縦長の文書**: ターミナルには 1 枚のインライン画像の大きさに上限があります。Ghostty は高さ 10000 px を超える Kitty Graphics 画像を受け付けず、iTerm2 は 10000 px 以上の画像を受け付けないうえ、1 枚あたり最大 255 行までしか表示しません。描画結果が上限より高い場合、markterm は横帯に分割して順に転送するので、文書は 1 枚の連続した画像として表示されます。帯の高さは Kitty Graphics では 10000 px 以下、iTerm2 では現在のターミナル幅で 255 行に収まる高さ (幅 640 px の描画を 80 列に表示する場合で約 3300 px) です。切断位置は Chromium で実測し、ブロック間の余白に置きます。ブロック自体が帯より高い場合は表の行、リストの項目、テキストの行の境界で切ります。画像や図の内部で切ることはありません。継ぎ目にはターミナル側の都合で最大 1 行分の空白が入ることがあります。横方向は分割しないため、`--width × --scale` は 10000 px 未満にしてください。Sixel は分割しません。一時ファイルと `-o` には常に分割前の 1 枚を書き出します。
+- **iTerm2 での大きな画像**: iTerm2 は 1 つの制御シーケンスを 1 MiB までしか受け付けません。base64 のペイロードがそれを超える帯は、iTerm2 3.5 で導入された分割形式 (`MultipartFile`、`FilePart`、`FileEnd`) で送ります。それ以下の場合は従来の単一の `File=` シーケンスを使うので、古い iTerm2 でも動作します。
 
 ## 出力と一時ファイル
 
@@ -121,8 +123,8 @@ markterm は固定の配色を持ちません。実行のたびにターミナ�
 
 1. **marked** が Markdown を HTML に変換します。` ```mermaid ` フェンスを `<pre class="mermaid">` に変換するカスタム拡張付きです
 2. **Playwright** がヘッドレス Chromium で HTML を開き、CDN の MermaidJS を読み込んで、すべての Mermaid ブロックが SVG になるまで待ちます（最大 10 秒。超過した場合は未変換のブロックがあっても続行します）
-3. `<body>` 要素を PNG スクリーンショットとして撮影します
-4. 選択された画像プロトコルで PNG をターミナルに転送します
+3. `<body>` 要素を PNG スクリーンショットとして撮影します。Kitty Graphics と iTerm2 で高さがターミナルの上限を超える場合は、実測したブロック境界で切った帯も撮影します ([幅とズーム](#幅とズーム) を参照)
+4. 選択された画像プロトコルで PNG (分割時は各帯を順に) をターミナルに転送します
 
 ## MermaidJS サポート
 
@@ -178,11 +180,17 @@ const colors = detected
 | エクスポート | 説明 |
 |-------------|------|
 | `markdownToImage(source, options?)` | Markdown を PNG の `Uint8Array` にレンダリング。オプション: `width`, `fontSize`, `fontFamily`, `colors`, `mermaidVersion`, `deviceScaleFactor` |
+| `markdownToImageBands(source, options)` | `markdownToImage` に `maxBandHeight` (px) を加えたもの。`{ png, bands }` を返す。`png` は全体、`bands` は実測したブロック境界で切った高さ `maxBandHeight` 以下の横帯。分割が不要なら `bands` は 1 要素 (`=== png`) |
+| `measureCutCandidates(source, options?)` | レンダリングして `{ height, candidates }` を返す。body の高さと、markterm が切断候補とみなす位置 (CSS px)。デバッグ用 |
+| `chooseCuts(candidates, totalHeight, maxBand)` | 帯の決定そのもの。貪欲法で届く範囲の最も低い候補を選び、候補がなければ上限で切る。純粋関数 |
 | `dispose()` | 共有 Chromium インスタンスを終了。処理の最後に一度呼ぶ |
 | `renderMarkdown(source)` | Markdown を HTML 文字列に変換（marked + Mermaid 拡張） |
 | `buildHtml(html, options?)` | 変換済み HTML をスタイル付きページテンプレートで包む |
 | `detectProtocol()` | 現在のターミナルのプロトコルを返す: `kitty`, `iterm2`, `sixel`, `file` |
-| `displayInline(png, { protocol? })` | PNG をインライン表示するエスケープシーケンス文字列を組み立てる。`file` の場合は `null` |
+| `displayInline(png, { protocol? })` | PNG をインライン表示するエスケープシーケンス文字列を組み立てる。`file` の場合は `null`。`png` には帯の配列も渡せ、縦に連続して表示されるよう連結される |
+| `maxBandHeightFor(protocol, pixelWidth)` | CLI がプロトコルごとに使う `maxBandHeight`。`kitty` は `KITTY_MAX_IMAGE_DIMENSION`、`iterm2` は `iterm2MaxBandHeight(pixelWidth, 列数)`、`sixel` と `file` は `null` |
+| `KITTY_MAX_IMAGE_DIMENSION` | `10000`。Ghostty が Kitty Graphics 画像に課す 1 辺の上限 |
+| `ITERM2_MAX_IMAGE_DIMENSION`、`ITERM2_MAX_ROWS`、`iterm2MaxBandHeight(pixelWidth, cols)` | iTerm2 の上限 (`10000`、到達した時点で拒否。1 枚あたり `255` 行) と、幅 `pixelWidth` の描画を `cols` 列で 255 行に収める帯の高さ |
 | `getTerminalSize()` | ターミナルの列数と行数（`pixelWidth`/`pixelHeight` はこのバージョンでは常に `null`） |
 | `estimateViewportWidth(scale)` | `-w auto` の推定ロジック |
 | `queryTerminalColors()` | OSC で `bg`, `fg`, `blue` を問い合わせる。stdin/stdout が TTY でない、または応答がない場合は `null` |
@@ -190,7 +198,7 @@ const colors = detected
 | `fallbackTheme("dark" \| "light")` | 組み込みの `ThemeColors` |
 | `isDark(hex)` | Mermaid テーマの選択に使う輝度判定 |
 
-型: `ScreenshotOptions`, `TemplateOptions`, `ThemeColors`, `TerminalColors`, `TerminalSize`, `Protocol`
+型: `ScreenshotOptions`, `BandOptions`, `ImageBands`, `MeasuredCandidates`, `TemplateOptions`, `ThemeColors`, `TerminalColors`, `TerminalSize`, `Protocol`
 
 ## ライセンス
 

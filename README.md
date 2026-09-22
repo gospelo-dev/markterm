@@ -24,11 +24,11 @@ See [docs/QUICKSTART.md](docs/QUICKSTART.md) for a step-by-step setup guide. 日
 | Protocol | Terminals | Auto-detected by |
 |----------|-----------|------------------|
 | Kitty Graphics | Ghostty, Kitty, WezTerm | `TERM=xterm-ghostty`, `TERM_PROGRAM` containing `ghostty` / `kitty` / `WezTerm`, or `GHOSTTY_RESOURCES_DIR`, `GHOSTTY_BIN_DIR`, `KITTY_WINDOW_ID`, `KITTY_PID`, `WEZTERM_PANE` |
-| iTerm2 Inline Images | iTerm2 | `TERM_PROGRAM=iTerm.app` or `LC_TERMINAL=iTerm2` |
+| iTerm2 Inline Images | iTerm2 (3.5 or later for renders over 1 MiB) | `TERM_PROGRAM=iTerm.app` or `LC_TERMINAL=iTerm2` |
 | Sixel | foot, xterm, mlterm, Konsole, mintty (Git Bash), Black Box | `TERM_PROGRAM` containing `foot` / `mlterm` / `konsole` / `mintty` / `blackbox`, or `TERM=xterm`. Only selected when `img2sixel` is on `PATH`. |
 | file (fallback) | Any terminal | Used when nothing above matches. The PNG is saved to a temp file and its path is printed instead of an inline image. |
 
-Detection runs in the order listed. `markterm --help` prints the detected protocol for the current terminal. Terminal multiplexers such as tmux or screen are not handled specially; image escape sequences generally do not pass through them, so expect the `file` fallback there.
+Detection runs in the order listed. `markterm --help` prints the detected protocol for the current terminal. Terminal multiplexers such as tmux or screen are not handled specially; image escape sequences generally do not pass through them, so expect the `file` fallback there. Forcing `-p kitty` in iTerm2 does not work (verified with iTerm2 3.7.2: nothing is drawn); use the auto-detected `iterm2` protocol there.
 
 ## Install
 
@@ -107,6 +107,8 @@ The page is laid out at a viewport width in CSS px and captured at `--scale` tim
 - `-w <px>` sets the viewport width directly.
 - `-z <percent>` multiplies the viewport width by `100 / zoom`, so at `-z 50` the page is laid out twice as wide and then displayed at terminal width, which makes the content appear at half size. It does not change the image's on-screen width.
 - The rendered image is transmitted with a column count equal to the terminal width, so it always spans the full terminal width for Kitty Graphics and iTerm2. Sixel output is sent at native pixel size.
+- **Tall documents**: terminals limit the size of one inline image. Ghostty rejects Kitty Graphics images taller than 10000 px; iTerm2 rejects images of 10000 px or more and shows at most 255 rows per image. When a render is taller than the limit, markterm cuts it into horizontal bands and transmits them one after another, so the document still appears as one continuous image. Bands are at most 10000 px for Kitty Graphics, and for iTerm2 as tall as 255 rows allow at the current terminal width (about 3300 px for a 640 px render on 80 columns). Cut positions are measured in Chromium and placed in the gap between blocks, or at a table row, list item or text line boundary inside a block that is itself taller than a band; never inside an image or diagram. The terminal may leave up to one blank row at each seam. Width is not split, so keep `--width x --scale` below 10000 px. Sixel output is not split. The temp file and `-o` always receive the whole render.
+- **Large images in iTerm2**: iTerm2 accepts at most 1 MiB per control sequence. Bands whose base64 payload would exceed that are sent with the multipart form (`MultipartFile`, `FilePart`, `FileEnd`) introduced in iTerm2 3.5. Smaller ones keep the classic single `File=` sequence, which works on every iTerm2 version.
 
 ## Output and Temp Files
 
@@ -121,8 +123,8 @@ Exit codes: `0` on success, `1` if the input file does not exist or the Markdown
 
 1. **marked** parses Markdown to HTML with a custom extension that turns ` ```mermaid ` fences into `<pre class="mermaid">` blocks
 2. **Playwright** loads the HTML in headless Chromium with MermaidJS from CDN and waits until every Mermaid block has produced an SVG (up to 10 seconds; rendering proceeds after that even if some blocks are still raw)
-3. The `<body>` element is captured as a PNG screenshot
-4. The PNG is transmitted to the terminal via the selected image protocol
+3. The `<body>` element is captured as a PNG screenshot. For Kitty Graphics and iTerm2, a render taller than the terminal's limit is also captured as bands cut at measured block boundaries (see [Width and Zoom](#width-and-zoom))
+4. The PNG (or each band in turn) is transmitted to the terminal via the selected image protocol
 
 ## MermaidJS Support
 
@@ -178,11 +180,17 @@ Exported API:
 | Export | Description |
 |--------|-------------|
 | `markdownToImage(source, options?)` | Render Markdown to a PNG `Uint8Array`. Options: `width`, `fontSize`, `fontFamily`, `colors`, `mermaidVersion`, `deviceScaleFactor`. |
+| `markdownToImageBands(source, options)` | Like `markdownToImage`, plus `maxBandHeight` (px). Returns `{ png, bands }`: the whole render and its horizontal bands, each at most `maxBandHeight` tall, cut at measured block boundaries. `bands` has one element (`=== png`) when no split is needed. |
+| `measureCutCandidates(source, options?)` | Render and return `{ height, candidates }`: the body height and the cut positions markterm would consider, in CSS px. For debugging. |
+| `chooseCuts(candidates, totalHeight, maxBand)` | The band selection itself: greedy, lowest candidate within reach, hard cut when none. Pure function. |
 | `dispose()` | Close the shared Chromium instance. Call once when done. |
 | `renderMarkdown(source)` | Markdown to HTML string (marked + Mermaid extension). |
 | `buildHtml(html, options?)` | Wrap rendered HTML in the styled page template. |
 | `detectProtocol()` | Return the protocol for the current terminal: `kitty`, `iterm2`, `sixel`, or `file`. |
-| `displayInline(png, { protocol? })` | Build the escape sequence string that displays the PNG inline, or `null` for `file`. |
+| `displayInline(png, { protocol? })` | Build the escape sequence string that displays the PNG inline, or `null` for `file`. `png` may also be an array of bands, which are joined so they display one under another. |
+| `maxBandHeightFor(protocol, pixelWidth)` | The `maxBandHeight` the CLI uses for a protocol: `KITTY_MAX_IMAGE_DIMENSION` for `kitty`, `iterm2MaxBandHeight(pixelWidth, columns)` for `iterm2`, `null` for `sixel` and `file`. |
+| `KITTY_MAX_IMAGE_DIMENSION` | `10000`. The per-dimension limit Ghostty enforces on Kitty Graphics images. |
+| `ITERM2_MAX_IMAGE_DIMENSION`, `ITERM2_MAX_ROWS`, `iterm2MaxBandHeight(pixelWidth, cols)` | iTerm2's limits (`10000`, rejected when reached; `255` rows per image) and the band height that keeps a `pixelWidth`-wide render within 255 rows on `cols` columns. |
 | `getTerminalSize()` | Columns and rows of the terminal (`pixelWidth`/`pixelHeight` are always `null` in this version). |
 | `estimateViewportWidth(scale)` | The `-w auto` heuristic. |
 | `queryTerminalColors()` | Query `bg`, `fg`, `blue` via OSC. Returns `null` if stdin/stdout is not a TTY or the terminal does not answer. |
@@ -190,7 +198,7 @@ Exported API:
 | `fallbackTheme("dark" \| "light")` | Built-in `ThemeColors`. |
 | `isDark(hex)` | Luminance check used to pick the Mermaid theme. |
 
-Types: `ScreenshotOptions`, `TemplateOptions`, `ThemeColors`, `TerminalColors`, `TerminalSize`, `Protocol`.
+Types: `ScreenshotOptions`, `BandOptions`, `ImageBands`, `MeasuredCandidates`, `TemplateOptions`, `ThemeColors`, `TerminalColors`, `TerminalSize`, `Protocol`.
 
 ## License
 
