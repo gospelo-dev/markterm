@@ -4,6 +4,8 @@
 
 <p align="center"><img src="https://github.com/gospelo-dev/markterm/blob/main/assets/hero.jpg?raw=true" alt="markterm: どんなターミナルでも Markdown をインライン表示" width="820"></p>
 
+<p align="center"><img src="https://github.com/gospelo-dev/markterm/blob/main/assets/demo.gif?raw=true" alt="markterm デモ: Ghostty で README.md をインライン表示" width="820"></p>
+
 Markdown + MermaidJS をターミナル上にインライン画像として表示する CLI ツール。
 
 Markdown ファイルをヘッドレス Chromium でスタイリング付きにレンダリングし、MermaidJS ダイアグラムも含めた PNG を、ターミナル固有の画像プロトコルで直接表示します。配色はターミナル自身の背景色と前景色に追従するので、プレビューがターミナルの一部のように見えます。
