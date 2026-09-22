@@ -7,15 +7,18 @@ import {
   ITERM2_MAX_ROWS,
 } from "./iterm2.js"
 import { buildDirectDisplay as sixelDisplay } from "./sixel.js"
+import { detectMultiplexer, type Multiplexer } from "./passthrough.js"
 import { getTerminalSize } from "../terminal.js"
 
 export {
   detectProtocol,
+  detectMultiplexer,
   KITTY_MAX_IMAGE_DIMENSION,
   ITERM2_MAX_IMAGE_DIMENSION,
   ITERM2_MAX_ROWS,
   iterm2MaxBandHeight,
   type Protocol,
+  type Multiplexer,
 }
 
 /**

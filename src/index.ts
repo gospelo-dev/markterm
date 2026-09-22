@@ -12,6 +12,7 @@ export {
 export { chooseCuts, type CutCandidates, type MeasuredCandidates } from "./render/bands.js"
 export {
   detectProtocol,
+  detectMultiplexer,
   displayInline,
   maxBandHeightFor,
   KITTY_MAX_IMAGE_DIMENSION,
@@ -19,6 +20,7 @@ export {
   ITERM2_MAX_ROWS,
   iterm2MaxBandHeight,
   type Protocol,
+  type Multiplexer,
 } from "./protocol/index.js"
 export { getTerminalSize, estimateViewportWidth, type TerminalSize } from "./terminal.js"
 export { queryTerminalColors, type TerminalColors } from "./colorquery.js"
