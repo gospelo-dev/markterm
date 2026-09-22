@@ -1,6 +1,6 @@
 {
   "name": "markterm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Render Markdown + MermaidJS as inline images in Ghostty, Kitty, iTerm2, WezTerm and other terminals.",
   "keywords": [
     "markdown",
