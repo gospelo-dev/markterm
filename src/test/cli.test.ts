@@ -50,6 +50,39 @@ describe("markterm CLI", () => {
   })
 
   test(
+    "-p kitty sends a tall render as several image sequences",
+    () => {
+      const doc = Array.from(
+        { length: 150 },
+        (_, i) => `Paragraph ${i} with enough words in it to wrap onto a second line at three hundred pixels.`,
+      ).join("\n\n")
+      const r = run(["-p", "kitty", "-t", "light", "-w", "300", "-s", "2"], doc)
+      expect(r.code).toBe(0)
+      const starts = r.stdout.split("\x1b_Ga=T,").length - 1
+      expect(starts).toBeGreaterThanOrEqual(2)
+      expect(r.stderr).toContain("markterm-")
+    },
+    60_000,
+  )
+
+  test(
+    "-p iterm2 sends a tall render as several images of at most 255 rows",
+    () => {
+      const doc = Array.from(
+        { length: 150 },
+        (_, i) => `Paragraph ${i} with enough words in it to wrap onto a second line at three hundred pixels.`,
+      ).join("\n\n")
+      const r = run(["-p", "iterm2", "-t", "light", "-w", "300", "-s", "2"], doc)
+      expect(r.code).toBe(0)
+      const files = r.stdout.split("\x1b]1337;File=").length - 1
+      const multipart = r.stdout.split("\x1b]1337;MultipartFile=").length - 1
+      expect(files + multipart).toBeGreaterThanOrEqual(2)
+      expect(r.stdout.split("\x1b]1337;FileEnd\x07").length - 1).toBe(multipart)
+    },
+    60_000,
+  )
+
+  test(
     "-o renders stdin Markdown to a PNG file",
     () => {
       const dir = mkdtempSync(join(tmpdir(), "markterm-cli-"))

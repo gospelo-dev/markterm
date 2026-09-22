@@ -1,7 +1,25 @@
 export { renderMarkdown } from "./render/markdown.js"
 export { buildHtml, type TemplateOptions } from "./render/template.js"
-export { markdownToImage, dispose, type ScreenshotOptions } from "./render/screenshot.js"
-export { detectProtocol, displayInline, type Protocol } from "./protocol/index.js"
+export {
+  markdownToImage,
+  markdownToImageBands,
+  measureCutCandidates,
+  dispose,
+  type ScreenshotOptions,
+  type BandOptions,
+  type ImageBands,
+} from "./render/screenshot.js"
+export { chooseCuts, type CutCandidates, type MeasuredCandidates } from "./render/bands.js"
+export {
+  detectProtocol,
+  displayInline,
+  maxBandHeightFor,
+  KITTY_MAX_IMAGE_DIMENSION,
+  ITERM2_MAX_IMAGE_DIMENSION,
+  ITERM2_MAX_ROWS,
+  iterm2MaxBandHeight,
+  type Protocol,
+} from "./protocol/index.js"
 export { getTerminalSize, estimateViewportWidth, type TerminalSize } from "./terminal.js"
 export { queryTerminalColors, type TerminalColors } from "./colorquery.js"
 export { deriveTheme, fallbackTheme, isDark, type ThemeColors } from "./render/themes.js"

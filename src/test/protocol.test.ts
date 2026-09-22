@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { detectProtocol, displayInline } from "../protocol/index.js"
-import { buildDirectDisplay as kittyDisplay } from "../protocol/kitty.js"
-import { buildDirectDisplay as iterm2Display } from "../protocol/iterm2.js"
+import { detectProtocol, displayInline, maxBandHeightFor } from "../protocol/index.js"
+import { buildDirectDisplay as kittyDisplay, KITTY_MAX_IMAGE_DIMENSION } from "../protocol/kitty.js"
+import { buildDirectDisplay as iterm2Display, iterm2MaxBandHeight } from "../protocol/iterm2.js"
 import { isSixelAvailable } from "../protocol/sixel.js"
 
 const ENV_KEYS = [
@@ -134,6 +134,61 @@ describe("iterm2 buildDirectDisplay", () => {
   test("falls back to width=100% when cols is not given", () => {
     expect(iterm2Display(new Uint8Array([1]))).toContain(";width=100%:")
   })
+
+  test("payloads that fit in one sequence stay a single File= sequence", () => {
+    // 700,000 bytes -> 933,336 base64 characters + header, under 1,048,576
+    const out = iterm2Display(new Uint8Array(700_000).fill(1), 80)
+    expect(out.startsWith("\x1b]1337;File=inline=1;")).toBe(true)
+    expect(out).not.toContain("MultipartFile")
+    expect(out.length).toBeLessThanOrEqual(1_048_576)
+  })
+
+  test("payloads over 1 MiB use the multipart form, in parts of at most 64 KiB, and no sequence over the limit", () => {
+    const png = new Uint8Array(900_000).fill(3) // 1,200,000 base64 characters
+    const b64 = Buffer.from(png).toString("base64")
+    const out = iterm2Display(png, 80)
+    expect(out.startsWith("\x1b]1337;MultipartFile=inline=1;preserveAspectRatio=1;size=900000;")).toBe(true)
+    expect(out).toContain(";width=80\x07")
+    expect(out.endsWith("\x1b]1337;FileEnd\x07")).toBe(true)
+    const seqs = out.split("\x07").filter(Boolean)
+    const prefix = "\x1b]1337;FilePart="
+    const partSeqs = seqs.filter((s) => s.startsWith(prefix))
+    expect(partSeqs.length).toBe(Math.ceil(b64.length / 65_536))
+    expect(seqs.length).toBe(partSeqs.length + 2)
+    for (const s of partSeqs) expect(s.length - prefix.length).toBeLessThanOrEqual(65_536)
+    for (const s of seqs) expect(s.length + 1).toBeLessThanOrEqual(1_048_576)
+    expect(partSeqs.map((s) => s.slice(prefix.length)).join("")).toBe(b64)
+  })
+})
+
+describe("iterm2MaxBandHeight", () => {
+  test("allows 255 rows of cells at a conservative 1.6 height/width ratio", () => {
+    // 640 px over 80 columns: 8 px cells -> 255 * 1.6 * 8
+    expect(iterm2MaxBandHeight(640, 80)).toBe(3264)
+    expect(iterm2MaxBandHeight(1280, 80)).toBe(6528)
+  })
+
+  test("stays below iTerm2's 10000 px dimension limit", () => {
+    expect(iterm2MaxBandHeight(8000, 80)).toBe(9999)
+  })
+
+  test("treats a missing column count as one column", () => {
+    expect(iterm2MaxBandHeight(640, 0)).toBe(9999)
+    expect(iterm2MaxBandHeight(3, 0)).toBe(Math.floor(255 * 1.6 * 3))
+  })
+})
+
+describe("maxBandHeightFor", () => {
+  test("kitty uses the Ghostty dimension limit, sixel and file have none", () => {
+    expect(maxBandHeightFor("kitty", 640)).toBe(KITTY_MAX_IMAGE_DIMENSION)
+    expect(maxBandHeightFor("sixel", 640)).toBeNull()
+    expect(maxBandHeightFor("file", 640)).toBeNull()
+  })
+
+  test("iterm2 derives the limit from the terminal width", () => {
+    const cols = process.stdout.columns || 80
+    expect(maxBandHeightFor("iterm2", 640)).toBe(iterm2MaxBandHeight(640, cols))
+  })
 })
 
 describe("displayInline", () => {
@@ -153,5 +208,24 @@ describe("displayInline", () => {
     expect(displayInline(png)).toBeNull()
     process.env.MARKTERM_PROTOCOL = "kitty"
     expect(displayInline(png)).toStartWith("\x1b_G")
+  })
+
+  test("joins an array of bands with newlines, one image sequence per band", () => {
+    const a = new Uint8Array([1, 2])
+    const b = new Uint8Array([3, 4, 5])
+    const out = displayInline([a, b], { protocol: "kitty" })!
+    const parts = out.split("\n")
+    expect(parts.length).toBe(2)
+    expect(parts[0]).toBe(displayInline(a, { protocol: "kitty" })!)
+    expect(parts[1]).toBe(displayInline(b, { protocol: "kitty" })!)
+  })
+
+  test("a single-element array produces the same output as the bare PNG", () => {
+    expect(displayInline([png], { protocol: "kitty" })).toBe(displayInline(png, { protocol: "kitty" }))
+    expect(displayInline([png], { protocol: "iterm2" })).toBe(displayInline(png, { protocol: "iterm2" }))
+  })
+
+  test("returns null for the file protocol with an array too", () => {
+    expect(displayInline([png, png], { protocol: "file" })).toBeNull()
   })
 })
