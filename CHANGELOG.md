@@ -2,6 +2,17 @@
 
 All notable changes to markterm are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.2.0 - Unreleased
+
+### Added
+
+- Local image support: relative and absolute paths, `file://` URIs, and HTML `<img>` tags in Markdown are embedded as data URIs before rendering, so local images display correctly
+- Multiplexer detection: `detectMultiplexer()` detects tmux and screen via `TMUX` and `STY` environment variables
+- herdr support: inline images display correctly inside herdr sessions with no special configuration
+- tmux/screen detection with guidance: when a terminal multiplexer is detected, inline display is skipped and a message recommends migrating to herdr for image support
+- `--help` now shows the detected multiplexer
+- Library API: `detectMultiplexer`, `Multiplexer` type
+
 ## 0.1.0 - 2026-09-22
 
 Initial release.

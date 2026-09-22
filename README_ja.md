@@ -1,6 +1,6 @@
 # markterm
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-1E90FF.svg?style=flat)](https://github.com/gospelo-dev/markterm/blob/main/LICENSE) [![Mermaid](https://img.shields.io/badge/Mermaid-11.16.0_(default)-FF3670.svg?style=flat&logo=mermaid&logoColor=white)](https://mermaid.js.org/) [![Playwright](https://img.shields.io/badge/Playwright-Chromium-2EAD33.svg?style=flat&logo=playwright&logoColor=white)](https://playwright.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-1E90FF.svg?style=flat)](https://github.com/gospelo-dev/markterm/blob/main/LICENSE) [![Mermaid](https://img.shields.io/badge/Mermaid-11.16.0_(default)-FF3670.svg?style=flat&logo=mermaid&logoColor=white)](https://mermaid.js.org/) [![Playwright](https://img.shields.io/badge/Playwright-Chromium-2EAD33.svg?style=flat&logo=playwright&logoColor=white)](https://playwright.dev/) [![Ghostty](https://img.shields.io/badge/Ghostty-supported-1C1C1C.svg?style=flat)](https://ghostty.org/) [![iTerm2](https://img.shields.io/badge/iTerm2-supported-000000.svg?style=flat)](https://iterm2.com/) [![herdr](https://img.shields.io/badge/herdr-supported-8B5CF6.svg?style=flat)](https://herdr.dev/)
 
 <p align="center"><img src="https://github.com/gospelo-dev/markterm/blob/main/assets/hero.jpg?raw=true" alt="markterm: どんなターミナルでも Markdown をインライン表示" width="820"></p>
 
@@ -28,7 +28,11 @@ Markdown ファイルをヘッドレス Chromium でスタイリング付きに�
 | Sixel | foot, xterm, mlterm, Konsole, mintty (Git Bash), Black Box | `TERM_PROGRAM` に `foot` / `mlterm` / `konsole` / `mintty` / `blackbox` を含む、または `TERM=xterm`。かつ `img2sixel` が `PATH` にある場合のみ選択 |
 | file（フォールバック） | すべて | 上記のいずれにも該当しない場合。インライン表示の代わりに PNG を一時ファイルに保存してパスを表示します |
 
-検出は表の順に行われます。`markterm --help` で現在のターミナルで検出されたプロトコルを確認できます。tmux や screen などのマルチプレクサは特別扱いしていません。画像のエスケープシーケンスは通常マルチプレクサを通過しないため、その中では `file` フォールバックになると考えてください。iTerm2 で `-p kitty` を強制しても表示されません (iTerm2 3.7.2 で確認。何も描画されない)。iTerm2 では自動検出される `iterm2` プロトコルを使ってください。
+検出は表の順に行われます。`markterm --help` で現在のターミナルで検出されたプロトコルを確認できます。
+
+**マルチプレクサ**: [herdr](https://herdr.dev/) に対応しています。herdr セッション内ではインライン画像が特別な設定なしでそのまま表示されます。tmux と screen は検出されますが、画像のエスケープシーケンスが確実に通過しないためインライン表示を無効にし、PNG を保存してパスを表示します。画像表示を利用するには tmux/screen から herdr への移行を検討してください。
+
+iTerm2 で `-p kitty` を強制しても表示されません (iTerm2 3.7.2 で確認。何も描画されない)。iTerm2 では自動検出される `iterm2` プロトコルを使ってください。
 
 ## インストール
 
@@ -187,6 +191,7 @@ const colors = detected
 | `renderMarkdown(source)` | Markdown を HTML 文字列に変換（marked + Mermaid 拡張） |
 | `buildHtml(html, options?)` | 変換済み HTML をスタイル付きページテンプレートで包む |
 | `detectProtocol()` | 現在のターミナルのプロトコルを返す: `kitty`, `iterm2`, `sixel`, `file` |
+| `detectMultiplexer()` | 環境変数 `TMUX` と `STY` に基づき `"tmux"`、`"screen"`、または `null` を返す |
 | `displayInline(png, { protocol? })` | PNG をインライン表示するエスケープシーケンス文字列を組み立てる。`file` の場合は `null`。`png` には帯の配列も渡せ、縦に連続して表示されるよう連結される |
 | `maxBandHeightFor(protocol, pixelWidth)` | CLI がプロトコルごとに使う `maxBandHeight`。`kitty` は `KITTY_MAX_IMAGE_DIMENSION`、`iterm2` は `iterm2MaxBandHeight(pixelWidth, 列数)`、`sixel` と `file` は `null` |
 | `KITTY_MAX_IMAGE_DIMENSION` | `10000`。Ghostty が Kitty Graphics 画像に課す 1 辺の上限 |
@@ -198,7 +203,7 @@ const colors = detected
 | `fallbackTheme("dark" \| "light")` | 組み込みの `ThemeColors` |
 | `isDark(hex)` | Mermaid テーマの選択に使う輝度判定 |
 
-型: `ScreenshotOptions`, `BandOptions`, `ImageBands`, `MeasuredCandidates`, `TemplateOptions`, `ThemeColors`, `TerminalColors`, `TerminalSize`, `Protocol`
+型: `ScreenshotOptions`, `BandOptions`, `ImageBands`, `MeasuredCandidates`, `TemplateOptions`, `ThemeColors`, `TerminalColors`, `TerminalSize`, `Protocol`, `Multiplexer`
 
 ## ライセンス
 

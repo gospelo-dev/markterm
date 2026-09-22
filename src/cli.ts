@@ -2,7 +2,7 @@
 import { resolve, dirname } from "path"
 import { parseArgs } from "util"
 import { markdownToImage, markdownToImageBands, dispose } from "./render/screenshot.js"
-import { detectProtocol, displayInline, maxBandHeightFor, type Protocol } from "./protocol/index.js"
+import { detectProtocol, detectMultiplexer, displayInline, maxBandHeightFor, type Protocol } from "./protocol/index.js"
 import { estimateViewportWidth } from "./terminal.js"
 import { queryTerminalColors } from "./colorquery.js"
 import { deriveTheme, fallbackTheme, type ThemeColors } from "./render/themes.js"
@@ -61,6 +61,7 @@ Theme auto-detection:
   on every run. Use --bg/--fg to override, or -t dark/light as fallback.
 
 Detected terminal protocol: ${detected}
+Multiplexer: ${detectMultiplexer() ?? "none"}
 Terminal columns: ${process.stdout.columns || "unknown"}
 
 Supported terminals:
@@ -164,7 +165,13 @@ if (values.output) {
   await Bun.write(values.output, png)
   console.log(`Saved to ${values.output} (${png.length} bytes)`)
 } else {
-  const escape = displayInline(bands, { protocol: proto })
+  const mux = detectMultiplexer()
+  if (mux) {
+    console.error(`Terminal multiplexer detected (${mux}). Inline image display is not supported.`)
+    console.error("Consider using herdr (https://herdr.dev/) for multiplexer support.")
+    console.error("")
+  }
+  const escape = mux ? null : displayInline(bands, { protocol: proto })
   if (escape) {
     process.stdout.write(escape)
     process.stdout.write("\n")
