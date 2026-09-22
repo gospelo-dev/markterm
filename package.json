@@ -26,7 +26,7 @@
   },
   "type": "module",
   "bin": {
-    "markterm": "./dist/cli.js"
+    "markterm": "dist/cli.js"
   },
   "exports": {
     ".": "./src/index.ts"
