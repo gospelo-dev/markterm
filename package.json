@@ -43,7 +43,7 @@
     "test": "bun test",
     "build": "bun build src/cli.ts --outfile dist/cli.js --target bun --external playwright",
     "postbuild": "chmod +x dist/cli.js",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run typecheck && bun test && bun run build"
   },
   "dependencies": {
     "marked": "^15.0.7",
