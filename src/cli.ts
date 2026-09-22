@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
+import { resolve, dirname } from "path"
 import { parseArgs } from "util"
 import { markdownToImage, markdownToImageBands, dispose } from "./render/screenshot.js"
-import { detectProtocol, displayInline, maxBandHeightFor, type Protocol } from "./protocol/index.js"
+import { detectProtocol, detectMultiplexer, displayInline, maxBandHeightFor, type Protocol } from "./protocol/index.js"
 import { estimateViewportWidth } from "./terminal.js"
 import { queryTerminalColors } from "./colorquery.js"
 import { deriveTheme, fallbackTheme, type ThemeColors } from "./render/themes.js"
@@ -60,6 +61,7 @@ Theme auto-detection:
   on every run. Use --bg/--fg to override, or -t dark/light as fallback.
 
 Detected terminal protocol: ${detected}
+Multiplexer: ${detectMultiplexer() ?? "none"}
 Terminal columns: ${process.stdout.columns || "unknown"}
 
 Supported terminals:
@@ -106,6 +108,7 @@ const baseWidth = values.width === "auto"
 const width = Math.round(baseWidth * (100 / zoom))
 
 let source: string
+let basePath: string
 if (positionals.length > 0) {
   const file = Bun.file(positionals[0])
   if (!(await file.exists())) {
@@ -113,12 +116,14 @@ if (positionals.length > 0) {
     process.exit(1)
   }
   source = await file.text()
+  basePath = dirname(resolve(positionals[0]))
 } else {
   const chunks: Uint8Array[] = []
   for await (const chunk of Bun.stdin.stream()) {
     chunks.push(chunk)
   }
   source = Buffer.concat(chunks).toString("utf-8")
+  basePath = process.cwd()
 }
 
 if (!source.trim()) {
@@ -141,6 +146,7 @@ const renderOptions = {
   fontSize,
   deviceScaleFactor: scale,
   mermaidVersion,
+  basePath,
 }
 
 // Ghostty rejects Kitty Graphics images taller than 10000 px; iTerm2 rejects
@@ -159,7 +165,13 @@ if (values.output) {
   await Bun.write(values.output, png)
   console.log(`Saved to ${values.output} (${png.length} bytes)`)
 } else {
-  const escape = displayInline(bands, { protocol: proto })
+  const mux = detectMultiplexer()
+  if (mux) {
+    console.error(`Terminal multiplexer detected (${mux}). Inline image display is not supported.`)
+    console.error("Consider using herdr (https://herdr.dev/) for multiplexer support.")
+    console.error("")
+  }
+  const escape = mux ? null : displayInline(bands, { protocol: proto })
   if (escape) {
     process.stdout.write(escape)
     process.stdout.write("\n")

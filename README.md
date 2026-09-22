@@ -1,6 +1,6 @@
 # markterm
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-1E90FF.svg?style=flat)](https://github.com/gospelo-dev/markterm/blob/main/LICENSE) [![Mermaid](https://img.shields.io/badge/Mermaid-11.16.0_(default)-FF3670.svg?style=flat&logo=mermaid&logoColor=white)](https://mermaid.js.org/) [![Playwright](https://img.shields.io/badge/Playwright-Chromium-2EAD33.svg?style=flat&logo=playwright&logoColor=white)](https://playwright.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-1E90FF.svg?style=flat)](https://github.com/gospelo-dev/markterm/blob/main/LICENSE) [![Mermaid](https://img.shields.io/badge/Mermaid-11.16.0_(default)-FF3670.svg?style=flat&logo=mermaid&logoColor=white)](https://mermaid.js.org/) [![Playwright](https://img.shields.io/badge/Playwright-Chromium-2EAD33.svg?style=flat&logo=playwright&logoColor=white)](https://playwright.dev/) [![Ghostty](https://img.shields.io/badge/Ghostty-supported-1C1C1C.svg?style=flat)](https://ghostty.org/) [![iTerm2](https://img.shields.io/badge/iTerm2-supported-000000.svg?style=flat)](https://iterm2.com/) [![herdr](https://img.shields.io/badge/herdr-supported-8B5CF6.svg?style=flat)](https://herdr.dev/)
 
 <p align="center"><img src="https://github.com/gospelo-dev/markterm/blob/main/assets/hero.jpg?raw=true" alt="markterm: Render Markdown inline in any terminal" width="820"></p>
 
@@ -28,7 +28,11 @@ See [docs/QUICKSTART.md](docs/QUICKSTART.md) for a step-by-step setup guide. 日
 | Sixel | foot, xterm, mlterm, Konsole, mintty (Git Bash), Black Box | `TERM_PROGRAM` containing `foot` / `mlterm` / `konsole` / `mintty` / `blackbox`, or `TERM=xterm`. Only selected when `img2sixel` is on `PATH`. |
 | file (fallback) | Any terminal | Used when nothing above matches. The PNG is saved to a temp file and its path is printed instead of an inline image. |
 
-Detection runs in the order listed. `markterm --help` prints the detected protocol for the current terminal. Terminal multiplexers such as tmux or screen are not handled specially; image escape sequences generally do not pass through them, so expect the `file` fallback there. Forcing `-p kitty` in iTerm2 does not work (verified with iTerm2 3.7.2: nothing is drawn); use the auto-detected `iterm2` protocol there.
+Detection runs in the order listed. `markterm --help` prints the detected protocol for the current terminal.
+
+**Multiplexers**: [herdr](https://herdr.dev/) is supported — inline images display correctly inside herdr sessions with no special configuration. tmux and screen are detected but inline display is disabled because image escape sequences do not pass through them reliably; markterm falls back to saving the PNG and printing its path. Consider migrating from tmux/screen to herdr for full image support.
+
+Forcing `-p kitty` in iTerm2 does not work (verified with iTerm2 3.7.2: nothing is drawn); use the auto-detected `iterm2` protocol there.
 
 ## Install
 
@@ -187,6 +191,7 @@ Exported API:
 | `renderMarkdown(source)` | Markdown to HTML string (marked + Mermaid extension). |
 | `buildHtml(html, options?)` | Wrap rendered HTML in the styled page template. |
 | `detectProtocol()` | Return the protocol for the current terminal: `kitty`, `iterm2`, `sixel`, or `file`. |
+| `detectMultiplexer()` | Return `"tmux"`, `"screen"`, or `null` based on the `TMUX` and `STY` environment variables. |
 | `displayInline(png, { protocol? })` | Build the escape sequence string that displays the PNG inline, or `null` for `file`. `png` may also be an array of bands, which are joined so they display one under another. |
 | `maxBandHeightFor(protocol, pixelWidth)` | The `maxBandHeight` the CLI uses for a protocol: `KITTY_MAX_IMAGE_DIMENSION` for `kitty`, `iterm2MaxBandHeight(pixelWidth, columns)` for `iterm2`, `null` for `sixel` and `file`. |
 | `KITTY_MAX_IMAGE_DIMENSION` | `10000`. The per-dimension limit Ghostty enforces on Kitty Graphics images. |
@@ -198,7 +203,7 @@ Exported API:
 | `fallbackTheme("dark" \| "light")` | Built-in `ThemeColors`. |
 | `isDark(hex)` | Luminance check used to pick the Mermaid theme. |
 
-Types: `ScreenshotOptions`, `BandOptions`, `ImageBands`, `MeasuredCandidates`, `TemplateOptions`, `ThemeColors`, `TerminalColors`, `TerminalSize`, `Protocol`.
+Types: `ScreenshotOptions`, `BandOptions`, `ImageBands`, `MeasuredCandidates`, `TemplateOptions`, `ThemeColors`, `TerminalColors`, `TerminalSize`, `Protocol`, `Multiplexer`.
 
 ## License
 
