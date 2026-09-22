@@ -4,6 +4,8 @@
 
 <p align="center"><img src="https://github.com/gospelo-dev/markterm/blob/main/assets/hero.jpg?raw=true" alt="markterm: Render Markdown inline in any terminal" width="820"></p>
 
+<p align="center"><img src="https://github.com/gospelo-dev/markterm/blob/main/assets/demo.gif?raw=true" alt="markterm demo: rendering README.md inline in Ghostty" width="820"></p>
+
 Render Markdown + MermaidJS as inline images in your terminal.
 
 markterm takes a Markdown file, renders it with full styling and MermaidJS diagram support in a headless Chromium, and displays the resulting PNG directly in your terminal using the terminal's native image protocol. The colors follow your terminal's own background and foreground, so the preview looks like part of the terminal.
