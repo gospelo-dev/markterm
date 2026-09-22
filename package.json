@@ -1,0 +1,51 @@
+{
+  "name": "markterm",
+  "version": "0.1.0",
+  "description": "Render Markdown + MermaidJS as inline images in Ghostty, Kitty, iTerm2, WezTerm and other terminals.",
+  "keywords": [
+    "markdown",
+    "mermaid",
+    "terminal",
+    "kitty",
+    "ghostty",
+    "iterm2",
+    "wezterm",
+    "sixel",
+    "inline-image",
+    "cli"
+  ],
+  "license": "MIT",
+  "author": "Gospelo",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gospelo-dev/markterm.git"
+  },
+  "type": "module",
+  "bin": {
+    "markterm": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "src",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "bun build src/cli.ts --outfile dist/cli.js --target bun --external playwright",
+    "postbuild": "chmod +x dist/cli.js",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "marked": "^15.0.7",
+    "playwright": "^1.52.0"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.13",
+    "typescript": "^5.8.2"
+  }
+}
