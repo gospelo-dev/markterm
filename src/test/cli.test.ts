@@ -92,6 +92,7 @@ describe("markterm CLI", () => {
       const r = run(["-t", "light", "-w", "300", "-s", "1"], doc)
       expect(r.code).toBe(0)
       expect(r.stdout).toContain("Links:")
+      expect(r.stdout).toMatch(/\[0\] Rendered image {2}file:\/\/\S+\/markterm-\d+\.png/)
       expect(r.stdout).toContain(`[1] docs  file://${ROOT}/docs/QUICKSTART.md`)
       expect(r.stdout).toContain("[2] site  https://example.com")
       // stdout is a pipe here, so no OSC 8 sequences
@@ -99,6 +100,7 @@ describe("markterm CLI", () => {
 
       const off = run(["-t", "light", "-w", "300", "-s", "1", "--no-links"], doc)
       expect(off.stdout).not.toContain("Links:")
+      expect(off.stdout).toContain("Saved to: ")
     },
     60_000,
   )
@@ -126,7 +128,8 @@ describe("markterm CLI", () => {
       expect(r.code).toBe(0)
       const starts = r.stdout.split("\x1b_Ga=T,").length - 1
       expect(starts).toBeGreaterThanOrEqual(2)
-      expect(r.stderr).toContain("markterm-")
+      // The temp PNG is listed as [0] after the image
+      expect(r.stdout).toMatch(/\[0\] Rendered image {2}file:\/\/\S+\/markterm-\d+\.png/)
     },
     60_000,
   )

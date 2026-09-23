@@ -1,5 +1,19 @@
 import { describe, expect, test } from "bun:test"
-import { extractLinks, formatLinkList } from "../links.js"
+import { extractLinks, formatFilePath, formatLinkList } from "../links.js"
+
+describe("formatFilePath", () => {
+  test("returns the path unchanged without hyperlinks", () => {
+    expect(formatFilePath("/tmp/markterm-1.png", { hyperlinks: false })).toBe("/tmp/markterm-1.png")
+  })
+
+  test("links to the absolute file:// URL but shows the path as given", () => {
+    expect(formatFilePath("/tmp/a b.png", { hyperlinks: true })).toBe(
+      "\x1b]8;;file:///tmp/a%20b.png\x1b\\/tmp/a b.png\x1b]8;;\x1b\\",
+    )
+    const rel = formatFilePath("out.png", { hyperlinks: true })
+    expect(rel).toContain(`\x1b]8;;file://${process.cwd()}/out.png\x1b\\out.png`)
+  })
+})
 
 describe("extractLinks", () => {
   test("collects links in document order, including tables and autolinks", () => {
@@ -86,5 +100,22 @@ describe("formatLinkList", () => {
 
   test("returns an empty string for no links", () => {
     expect(formatLinkList([], { hyperlinks: true })).toBe("")
+  })
+
+  test("lists the rendered image as [0] before the document's links", () => {
+    expect(formatLinkList(links, { hyperlinks: false, image: "/tmp/markterm-1.png" })).toBe(
+      "Links:\n  [0] Rendered image  file:///tmp/markterm-1.png\n  [1] docs  https://a.example\n  [2] https://b.example\n",
+    )
+  })
+
+  test("lists the image alone when the document has no links", () => {
+    expect(formatLinkList([], { hyperlinks: false, image: "/tmp/m.png" })).toBe(
+      "Links:\n  [0] Rendered image  file:///tmp/m.png\n",
+    )
+  })
+
+  test("pads [0] to the width of the largest number", () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({ text: `t${i}`, href: `https://${i}.x`, url: `https://${i}.x` }))
+    expect(formatLinkList(many, { hyperlinks: false, image: "/tmp/m.png" })).toContain("  [ 0] Rendered image")
   })
 })

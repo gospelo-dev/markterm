@@ -23,7 +23,7 @@ export {
   type Multiplexer,
 } from "./protocol/index.js"
 export { getTerminalSize, estimateViewportWidth, type TerminalSize } from "./terminal.js"
-export { extractLinks, formatLinkList, type MarkdownLink } from "./links.js"
+export { extractLinks, formatLinkList, formatFilePath, type MarkdownLink } from "./links.js"
 export { queryTerminalColors, type TerminalColors } from "./colorquery.js"
 export {
   deriveTheme,

@@ -68,17 +68,29 @@ function hyperlink(url: string, text: string): string {
 }
 
 /**
- * Format links as a numbered list for the terminal. With hyperlinks, each URL is
- * an OSC 8 hyperlink; terminals without OSC 8 support show it as plain text.
+ * A file path as printed text: with hyperlinks, an OSC 8 hyperlink to the file
+ * (resolved to an absolute file:// URL) that shows the path as given.
  */
-export function formatLinkList(links: MarkdownLink[], opts: { hyperlinks: boolean }): string {
-  if (links.length === 0) return ""
+export function formatFilePath(path: string, opts: { hyperlinks: boolean }): string {
+  return opts.hyperlinks ? hyperlink(pathToFileURL(resolve(path)).href, path) : path
+}
+
+/**
+ * Format links as a numbered list for the terminal, starting at [1]. With
+ * `image`, the rendered image file is listed first as [0]. With hyperlinks, each
+ * URL is an OSC 8 hyperlink; terminals without OSC 8 support show plain text.
+ */
+export function formatLinkList(links: MarkdownLink[], opts: { hyperlinks: boolean; image?: string }): string {
+  const entries: [number, string, string][] = links.map((link, i) => [i + 1, link.text, link.url])
+  if (opts.image !== undefined) entries.unshift([0, "Rendered image", pathToFileURL(resolve(opts.image)).href])
+  if (entries.length === 0) return ""
+
   const width = String(links.length).length
-  const lines = links.map((link, i) => {
-    const num = `[${String(i + 1).padStart(width)}]`
-    const url = opts.hyperlinks ? hyperlink(link.url, link.url) : link.url
+  const lines = entries.map(([n, text, rawUrl]) => {
+    const num = `[${String(n).padStart(width)}]`
+    const url = opts.hyperlinks ? hyperlink(rawUrl, rawUrl) : rawUrl
     // Omit the text only when it is the URL itself (autolinks)
-    return link.text === link.url ? `  ${num} ${url}` : `  ${num} ${link.text}  ${url}`
+    return text === rawUrl ? `  ${num} ${url}` : `  ${num} ${text}  ${url}`
   })
   return `Links:\n${lines.join("\n")}\n`
 }
