@@ -7,13 +7,20 @@ import pkg from "../../package.json" with { type: "json" }
 const CLI = join(import.meta.dir, "..", "cli.ts")
 const ROOT = join(import.meta.dir, "..", "..")
 
-function run(args: string[], stdin?: string) {
+function run(args: string[], stdin?: string, env: Record<string, string> = {}) {
   const proc = Bun.spawnSync(["bun", CLI, ...args], {
     cwd: ROOT,
     stdin: stdin === undefined ? "ignore" : Buffer.from(stdin),
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, MARKTERM_PROTOCOL: "file" },
+    env: {
+      ...process.env,
+      MARKTERM_PROTOCOL: "file",
+      MARKTERM_THEME: "",
+      MARKTERM_FONT: "",
+      MARKTERM_CODE_FONT: "",
+      ...env,
+    },
   })
   return {
     code: proc.exitCode,
@@ -35,6 +42,47 @@ describe("markterm CLI", () => {
     expect(r.stdout).toContain("Usage: markterm [options] [file.md]")
     expect(r.stdout).toContain("--bg <#hex>")
     expect(r.stdout).toContain("Detected terminal protocol: file")
+  })
+
+  test("--help lists the built-in themes", () => {
+    const r = run(["--help"])
+    expect(r.stdout).toContain("catppuccin-mocha")
+    expect(r.stdout).toContain("solarized-light")
+  })
+
+  test("exits 1 on a non-hex --bg and points to -t for theme names", () => {
+    const r = run(["--bg", "light"], "# Hi\n")
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain('Invalid --bg "light"')
+    expect(r.stderr).toContain("-t light")
+  })
+
+  test("exits 1 on an unknown theme and lists the available ones", () => {
+    const r = run(["-t", "no-such-theme"], "# Hi\n")
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain('Unknown theme "no-such-theme"')
+    expect(r.stderr).toContain("dracula")
+  })
+
+  test("exits 1 on an unknown MARKTERM_THEME and names the variable", () => {
+    const r = run([], "# Hi\n", { MARKTERM_THEME: "no-such-theme" })
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain('Unknown theme "no-such-theme" (from MARKTERM_THEME)')
+  })
+
+  test("-t takes precedence over MARKTERM_THEME", () => {
+    // An invalid env value is never looked at when -t is given
+    const r = run(["-t", "no-such-theme"], "# Hi\n", { MARKTERM_THEME: "light" })
+    expect(r.stderr).toContain('Unknown theme "no-such-theme".')
+  })
+
+  test("exits 1 on a font name that could break the stylesheet", () => {
+    const r = run(["--font", "x; } body { color: red"], "# Hi\n")
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain("Invalid --font")
+    const e = run([], "# Hi\n", { MARKTERM_CODE_FONT: "<script>" })
+    expect(e.code).toBe(1)
+    expect(e.stderr).toContain("Invalid MARKTERM_CODE_FONT")
   })
 
   test("exits 1 when the input file does not exist", () => {

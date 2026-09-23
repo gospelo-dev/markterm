@@ -1,23 +1,36 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { resolve, dirname } from "path"
 import { parseArgs } from "util"
+import { readFile, writeFile } from "fs/promises"
+import { existsSync } from "fs"
 import { markdownToImage, markdownToImageBands, dispose } from "./render/screenshot.js"
 import { detectProtocol, detectMultiplexer, displayInline, maxBandHeightFor, type Protocol } from "./protocol/index.js"
 import { estimateViewportWidth } from "./terminal.js"
 import { queryTerminalColors } from "./colorquery.js"
-import { deriveTheme, fallbackTheme, type ThemeColors } from "./render/themes.js"
+import {
+  deriveTheme,
+  fallbackTheme,
+  getTheme,
+  isDark,
+  normalizeHex,
+  THEME_NAMES,
+  type ThemeColors,
+} from "./render/themes.js"
 import pkg from "../package.json" with { type: "json" }
 
 const VERSION: string = pkg.version
 
 const { values, positionals } = parseArgs({
-  args: Bun.argv.slice(2),
+  args: process.argv.slice(2),
   options: {
     theme: { type: "string", short: "t" },
     bg: { type: "string" },
     fg: { type: "string" },
     width: { type: "string", short: "w", default: "auto" },
+    font: { type: "string" },
+    "code-font": { type: "string" },
     "font-size": { type: "string", default: "16" },
+    "no-highlight": { type: "boolean", default: false },
     scale: { type: "string", short: "s", default: "2" },
     mermaid: { type: "string", default: "11.16.0" },
     zoom: { type: "string", short: "z", default: "100" },
@@ -43,11 +56,14 @@ Usage: markterm [options] [file.md]
 Reads from stdin if no file is given.
 
 Options:
-  -t, --theme <dark|light>       Fallback theme when auto-detect fails (default: dark)
+  -t, --theme <name>             Use a built-in color theme instead of the terminal's colors
       --bg <#hex>                Override background color
       --fg <#hex>                Override foreground color
+      --font <family>            Body font, e.g. "Noto Sans JP" (a CSS font-family list)
+      --code-font <family>       Font for code and code blocks, e.g. "JetBrains Mono"
   -w, --width <auto|px>          Viewport width: auto fits terminal (default: auto)
       --font-size <px>           Body font size (default: 16)
+      --no-highlight             Disable syntax highlighting of code blocks
   -s, --scale <factor>           Device scale factor (default: 2)
       --mermaid <version>        MermaidJS version (default: 11.16.0)
   -z, --zoom <percent>           Display zoom: 1-100% of terminal width (default: 100)
@@ -56,9 +72,12 @@ Options:
   -h, --help                     Show this help
   -v, --version                  Show version
 
-Theme auto-detection:
-  markterm queries your terminal's colors via OSC 10/11 escape sequences
-  on every run. Use --bg/--fg to override, or -t dark/light as fallback.
+Themes:
+  Without -t or MARKTERM_THEME, markterm queries your terminal's colors via
+  OSC 10/11 escape sequences on every run, and falls back to "dark" if that
+  fails. -t <name> uses a built-in theme and skips the query. --bg/--fg
+  override individual colors in either case.
+  Built-in: ${THEME_NAMES.join(", ")}
 
 Detected terminal protocol: ${detected}
 Multiplexer: ${detectMultiplexer() ?? "none"}
@@ -74,25 +93,85 @@ Prerequisites:
     macOS:  brew install libsixel
     Linux:  apt install libsixel-bin
 
-Environment:
-  MARKTERM_PROTOCOL    Override auto-detected protocol`)
+Environment (command-line options take precedence):
+  MARKTERM_PROTOCOL    Override auto-detected protocol
+  MARKTERM_THEME       Default theme, like -t
+  MARKTERM_FONT        Default body font, like --font
+  MARKTERM_CODE_FONT   Default code font, like --code-font`)
   process.exit(0)
 }
 
+function parseColorOption(name: "bg" | "fg"): string | undefined {
+  const raw = values[name]
+  if (raw === undefined) return undefined
+  const hex = normalizeHex(raw)
+  if (!hex) {
+    console.error(`Invalid --${name} "${raw}": expected a hex color such as #ffffff.`)
+    if (THEME_NAMES.includes(raw)) console.error(`To use the "${raw}" theme, pass -t ${raw}.`)
+    process.exit(1)
+  }
+  return hex
+}
+
+const bgOption = parseColorOption("bg")
+const fgOption = parseColorOption("fg")
+
+// -t takes precedence over MARKTERM_THEME
+const themeName = values.theme ?? (process.env.MARKTERM_THEME || undefined)
+let namedTheme: ThemeColors | null = null
+if (themeName !== undefined) {
+  namedTheme = getTheme(themeName)
+  if (!namedTheme) {
+    const from = values.theme !== undefined ? "" : " (from MARKTERM_THEME)"
+    console.error(`Unknown theme "${themeName}"${from}. Available: ${THEME_NAMES.join(", ")}`)
+    process.exit(1)
+  }
+}
+
+/**
+ * Validate a font option and append a generic fallback so a missing font does
+ * not fall back to the browser's serif default. The value goes into a <style>
+ * block, so characters that could end the declaration are rejected.
+ */
+function parseFontOption(value: string | undefined, source: string, generic: string): string | undefined {
+  if (value === undefined || !value.trim()) return undefined
+  if (/[;{}<>]/.test(value)) {
+    console.error(`Invalid ${source} "${value}": font names cannot contain ; { } < >`)
+    process.exit(1)
+  }
+  return `${value.trim()}, ${generic}`
+}
+
+const fontFamily =
+  parseFontOption(values.font, "--font", "sans-serif") ??
+  parseFontOption(process.env.MARKTERM_FONT, "MARKTERM_FONT", "sans-serif")
+const codeFontFamily =
+  parseFontOption(values["code-font"], "--code-font", "monospace") ??
+  parseFontOption(process.env.MARKTERM_CODE_FONT, "MARKTERM_CODE_FONT", "monospace")
+
+/** Apply --bg / --fg on top of a base theme. */
+function withOverrides(base: ThemeColors): ThemeColors {
+  if (!bgOption && !fgOption) return base
+  const bg = bgOption ?? base.bg
+  // Keep the theme's code colors unless --bg flips the page between dark and light
+  const codeTheme = isDark(bg) === isDark(base.bg) ? base.codeTheme : undefined
+  return deriveTheme(bg, fgOption ?? base.fg, base.link, codeTheme)
+}
+
 async function resolveColors(): Promise<ThemeColors> {
-  if (values.bg && values.fg) {
-    return deriveTheme(values.bg, values.fg, "#89b4fa")
+  // -t: use the named theme as is, without querying the terminal
+  if (namedTheme) return withOverrides(namedTheme)
+
+  if (bgOption && fgOption) {
+    return deriveTheme(bgOption, fgOption, "#89b4fa")
   }
 
   const detected = await queryTerminalColors()
   if (detected) {
-    const bg = values.bg || detected.bg
-    const fg = values.fg || detected.fg
-    return deriveTheme(bg, fg, detected.blue)
+    return deriveTheme(bgOption ?? detected.bg, fgOption ?? detected.fg, detected.blue)
   }
 
-  const mode = values.theme === "light" ? "light" : "dark"
-  return fallbackTheme(mode)
+  return withOverrides(fallbackTheme("dark"))
 }
 
 const colors = await resolveColors()
@@ -110,17 +189,16 @@ const width = Math.round(baseWidth * (100 / zoom))
 let source: string
 let basePath: string
 if (positionals.length > 0) {
-  const file = Bun.file(positionals[0])
-  if (!(await file.exists())) {
+  if (!existsSync(positionals[0])) {
     console.error(`File not found: ${positionals[0]}`)
     process.exit(1)
   }
-  source = await file.text()
+  source = await readFile(positionals[0], "utf-8")
   basePath = dirname(resolve(positionals[0]))
 } else {
-  const chunks: Uint8Array[] = []
-  for await (const chunk of Bun.stdin.stream()) {
-    chunks.push(chunk)
+  const chunks: Buffer[] = []
+  for await (const chunk of process.stdin) {
+    chunks.push(chunk as Buffer)
   }
   source = Buffer.concat(chunks).toString("utf-8")
   basePath = process.cwd()
@@ -144,9 +222,13 @@ const renderOptions = {
   colors,
   width,
   fontSize,
+  // Only set when given: an explicit undefined would override the template default
+  ...(fontFamily && { fontFamily }),
+  ...(codeFontFamily && { codeFontFamily }),
   deviceScaleFactor: scale,
   mermaidVersion,
   basePath,
+  highlight: !values["no-highlight"],
 }
 
 // Ghostty rejects Kitty Graphics images taller than 10000 px; iTerm2 rejects
@@ -159,10 +241,10 @@ const { png, bands } = maxBandHeight !== null
 
 const tmpDir = process.env.TMPDIR || "/tmp/"
 const tmpPath = `${tmpDir}markterm-${Date.now()}.png`
-await Bun.write(tmpPath, png)
+await writeFile(tmpPath, png)
 
 if (values.output) {
-  await Bun.write(values.output, png)
+  await writeFile(values.output, png)
   console.log(`Saved to ${values.output} (${png.length} bytes)`)
 } else {
   const mux = detectMultiplexer()

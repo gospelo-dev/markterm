@@ -1,4 +1,4 @@
-export { renderMarkdown } from "./render/markdown.js"
+export { renderMarkdown, renderMarkdownHighlighted, type HighlightOptions } from "./render/markdown.js"
 export { buildHtml, type TemplateOptions } from "./render/template.js"
 export {
   markdownToImage,
@@ -24,4 +24,12 @@ export {
 } from "./protocol/index.js"
 export { getTerminalSize, estimateViewportWidth, type TerminalSize } from "./terminal.js"
 export { queryTerminalColors, type TerminalColors } from "./colorquery.js"
-export { deriveTheme, fallbackTheme, isDark, type ThemeColors } from "./render/themes.js"
+export {
+  deriveTheme,
+  fallbackTheme,
+  getTheme,
+  THEME_NAMES,
+  normalizeHex,
+  isDark,
+  type ThemeColors,
+} from "./render/themes.js"

@@ -2,6 +2,26 @@
 
 All notable changes to markterm are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Built-in color themes for `-t`: `catppuccin-mocha`, `catppuccin-latte`, `dracula`, `nord`, `gruvbox-dark`, `gruvbox-light`, `solarized-dark`, `solarized-light`, `tokyo-night`, `one-dark`, `github-dark`, `github-light`, in addition to `dark` and `light`. Each sets background, foreground and link color at once; `--help` lists them
+- `MARKTERM_THEME` environment variable: default theme, as with `-t` (`-t` takes precedence)
+- `--font` / `--code-font` options and `MARKTERM_FONT` / `MARKTERM_CODE_FONT` environment variables to set the body and code fonts. A generic fallback (`sans-serif` / `monospace`) is appended
+- Library API: `getTheme`, `THEME_NAMES`, `normalizeHex`, and the `codeFontFamily` render option
+- Syntax highlighting of fenced code blocks that name a language, with [Shiki](https://shiki.style/). Colors follow the theme (each built-in theme maps to a Shiki theme; detected colors use `github-dark-default` / `github-light-default`). Runs locally, no network needed. `--no-highlight` disables it
+- Library API: `renderMarkdownHighlighted`, the `highlight` render option, and `ThemeColors.codeTheme`
+
+### Changed
+
+- `-t <name>` now always applies the named theme and skips the terminal color query. Previously it was only a fallback used when auto-detection failed, so `-t light` had no effect in a terminal that answered the query. `--bg`/`--fg` still override individual colors on top of the theme
+- `--bg`/`--fg` must be hex colors (`#rgb` or `#rrggbb`). Other values such as `--bg light` now exit with code 1 instead of rendering with an invalid color. An unknown `-t` name also exits with code 1
+
+- Node.js support: the CLI and the library now run on Node.js 20+ as well as Bun 1.1+. `npm install -g markterm` and `npx markterm` work without Bun
+- The `markterm` command runs on Node.js (`#!/usr/bin/env node`). Environments without Node.js can use `bunx --bun markterm`
+- The library is published as compiled ES modules with `.d.ts` type definitions (`dist/`) instead of TypeScript source (`src/`)
+
 ## 0.2.0 - 2026-09-23
 
 ### Added

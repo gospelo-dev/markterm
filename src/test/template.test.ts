@@ -3,6 +3,12 @@ import { buildHtml } from "../render/template.js"
 import { fallbackTheme } from "../render/themes.js"
 
 describe("buildHtml", () => {
+  test("codeFontFamily adds a code font rule only when set", () => {
+    expect(buildHtml("<p>x</p>")).not.toContain("code, pre { font-family")
+    const html = buildHtml("<p>x</p>", { codeFontFamily: "JetBrains Mono, monospace" })
+    expect(html).toContain("code, pre { font-family: JetBrains Mono, monospace; }")
+  })
+
   test("uses defaults: 800px, 16px, dark fallback theme, MermaidJS 11.16.0", () => {
     const html = buildHtml("<p>x</p>")
     expect(html).toContain("width: 800px;")

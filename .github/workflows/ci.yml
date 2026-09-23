@@ -20,6 +20,10 @@ jobs:
         with:
           bun-version: latest
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -41,8 +45,15 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Smoke test the built CLI
+      - name: Smoke test the built CLI (Bun)
         run: |
           bun dist/cli.js --version
           echo "# CI" | bun dist/cli.js -o /tmp/ci.png -t light -w 300 -s 1
           test -s /tmp/ci.png
+
+      - name: Smoke test the built CLI and library (Node.js)
+        run: |
+          ./dist/cli.js --version
+          echo "# CI" | ./dist/cli.js -o /tmp/ci-node.png -t light -w 300 -s 1
+          test -s /tmp/ci-node.png
+          node --input-type=module -e 'const m = await import("markterm"); const png = await m.markdownToImage("# CI", { width: 300, deviceScaleFactor: 1 }); if (!png.length) process.exit(1); await m.dispose()'

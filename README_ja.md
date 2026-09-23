@@ -16,8 +16,8 @@ Markdown ファイルをヘッドレス Chromium でスタイリング付きに�
 
 | 要件 | 補足 |
 |------|------|
-| Bun 1.1 以上 | markterm は Bun アプリケーションです。Node.js では動作しません。 |
-| Chromium | `bunx playwright install chromium` で一度だけインストールします。実行のたびにヘッドレスブラウザが起動します。 |
+| Node.js 20 以上 または Bun 1.1 以上 | どちらのランタイムでも動作します。`markterm` コマンドは Node.js で実行されます。Node.js がない環境では `bunx --bun markterm` で実行してください。 |
+| Chromium | `npx playwright install chromium`（または `bunx playwright install chromium`）で一度だけインストールします。実行のたびにヘッドレスブラウザが起動します。 |
 | ネットワーク接続 | MermaidJS はレンダリング時に jsDelivr CDN からロードします。オフラインでは Mermaid ブロックは生テキストのまま表示されます。 |
 | `img2sixel`（Sixel ターミナルのみ） | libsixel に含まれます。Kitty Graphics と iTerm2 のターミナルでは不要です。 |
 
@@ -39,10 +39,13 @@ iTerm2 で `-p kitty` を強制しても表示されません (iTerm2 3.7.2 で�
 ## インストール
 
 ```bash
-bun install -g markterm
+npm install -g markterm
+# または: bun install -g markterm
+# Node.js がない環境では: bunx --bun markterm
 
 # レンダリングに Chromium が必要（初回のみ）
-bunx playwright install chromium
+npx playwright install chromium
+# または: bunx playwright install chromium
 
 # Sixel ターミナルの場合のみ
 # macOS:  brew install libsixel
@@ -64,23 +67,27 @@ markterm README.md -o output.png
 # 標準入力から読み込み
 cat README.md | markterm
 
-# 自動検出が使えないときにライトテーマを指定
-cat README.md | markterm -t light
+# ターミナルの色ではなく組み込みテーマを使う
+markterm README.md -t light
+markterm README.md -t solarized-light
 
 # 色を直接指定
 markterm README.md --bg "#ffffff" --fg "#1e1e2e"
 ```
 
-標準入力から Markdown を読む場合、ターミナル色の自動検出は行われず（[テーマ](#テーマ) を参照）、`-t` で選んだフォールバックテーマが使われます。
+標準入力から Markdown を読む場合、ターミナル色の自動検出は行われず（[テーマ](#テーマ) を参照）、`-t` で別のテーマを選ばない限り `dark` テーマが使われます。
 
 ## オプション
 
 ```
--t, --theme <dark|light>       色の自動検出に失敗したときのフォールバックテーマ (デフォルト: dark)
-    --bg <#hex>                背景色。検出値を上書き
-    --fg <#hex>                前景色。検出値を上書き
+-t, --theme <name>             ターミナルの色ではなく組み込みテーマを使う (テーマの節を参照)
+    --bg <#hex>                背景色 (#rgb または #rrggbb)。検出値またはテーマの値を上書き
+    --fg <#hex>                前景色 (#rgb または #rrggbb)。検出値またはテーマの値を上書き
 -w, --width <auto|px>          ビューポート幅 (CSS px)。auto はターミナルから推定 (デフォルト: auto)
+    --font <family>            本文フォント。CSS の font-family リスト (例: "Noto Sans JP")
+    --code-font <family>       インラインコードとコードブロックのフォント (例: "JetBrains Mono")
     --font-size <px>           本文フォントサイズ (CSS px) (デフォルト: 16)
+    --no-highlight             コードブロックのシンタックスハイライトを無効にする
 -s, --scale <factor>           Chromium に渡すデバイススケール係数 (デフォルト: 2)
     --mermaid <version>        jsDelivr からロードする MermaidJS バージョン (デフォルト: 11.16.0)
 -z, --zoom <percent>           表示ズーム 1-100 (デフォルト: 100)
@@ -94,16 +101,54 @@ markterm README.md --bg "#ffffff" --fg "#1e1e2e"
 
 プロトコルの優先順位: `-p` > `MARKTERM_PROTOCOL` > 自動検出。
 
+テーマとフォントの優先順位: コマンドラインオプション > 環境変数（`MARKTERM_THEME`、`MARKTERM_FONT`、`MARKTERM_CODE_FONT`）> デフォルト。[環境変数](#環境変数) を参照してください。
+
+### フォント
+
+`--font` と `--code-font` には CSS の `font-family` リストを指定するので、複数のフォントを優先順に並べられます（`--font "Inter, Noto Sans JP"`）。末尾には汎用フォント（`--font` は `sans-serif`、`--code-font` は `monospace`）が自動で追加されるため、インストールされていないフォントを指定しても近いフォントで表示されます。フォントはヘッドレス Chromium がシステムにインストールされたフォントから探します。指定しない場合、本文はシステムの UI フォント、コードはブラウザ標準の等幅フォントになります。`;`、`{`、`}`、`<`、`>` を含む値は終了コード `1` で拒否されます。
+
 ## テーマ
 
-markterm は固定の配色を持ちません。実行のたびにターミナルへ色を問い合わせ、その結果からページのスタイルを組み立てます。
+markterm はデフォルトでは固定の配色を使いません。実行のたびにターミナルへ色を問い合わせ、その結果からページのスタイルを組み立てます。
 
 1. 背景色を `OSC 11`、前景色を `OSC 10`、リンク色に使うパレットの青を `OSC 4;4` で問い合わせます。各問い合わせは応答を最大 500 ms 待ちます。
 2. 背景色と前景色から、コードブロックの背景、表の罫線色を導出し、背景の輝度から MermaidJS のテーマ（`dark` または `default`）を選びます。
 3. `--bg` と `--fg` は検出値を個別に上書きします。両方を指定した場合はターミナルへの問い合わせを行わず、リンク色は `#89b4fa` になります。
-4. 問い合わせに失敗した、または問い合わせできない場合は、`-t` で選んだフォールバックテーマを使います。`dark` は Catppuccin 風（`#1e1e2e` 地に `#cdd6f4`）、`light` は `#ffffff` 地に `#1e1e2e` です。
+4. 問い合わせに失敗した、または問い合わせできない場合は、`dark` テーマを使います。
 
 自動検出には標準入力と標準出力の両方が TTY である必要があります。そのため、Markdown をパイプで渡した場合、出力をリダイレクトした場合、一部のマルチプレクサ内では検出が行われません。その場合は `-t` または `--bg`/`--fg` を使ってください。
+
+### 組み込みテーマ
+
+`-t <name>` を指定すると、組み込みテーマから背景色・前景色・リンク色をまとめて設定し、ターミナルへの問い合わせは行いません。いつも同じテーマを使うなら `MARKTERM_THEME` を設定してください（シェルの設定ファイルに `export MARKTERM_THEME=nord` など）。`-t` はこの設定より優先されます。その上から `--bg` と `--fg` で個別の色を上書きすることもできます（`-t nord --bg "#000000"`）。
+
+| 名前 | 背景色 | 前景色 | リンク色 | シンタックスハイライト (Shiki) |
+|------|--------|--------|----------|-------------------------------|
+| `dark` | `#1e1e2e` | `#cdd6f4` | `#89b4fa` | `catppuccin-mocha` |
+| `light` | `#ffffff` | `#1e1e2e` | `#1e66f5` | `github-light-default` |
+| `catppuccin-mocha` | `#1e1e2e` | `#cdd6f4` | `#89b4fa` | `catppuccin-mocha` |
+| `catppuccin-latte` | `#eff1f5` | `#4c4f69` | `#1e66f5` | `catppuccin-latte` |
+| `dracula` | `#282a36` | `#f8f8f2` | `#bd93f9` | `dracula` |
+| `nord` | `#2e3440` | `#d8dee9` | `#81a1c1` | `nord` |
+| `gruvbox-dark` | `#282828` | `#ebdbb2` | `#83a598` | `gruvbox-dark-medium` |
+| `gruvbox-light` | `#fbf1c7` | `#3c3836` | `#076678` | `gruvbox-light-medium` |
+| `solarized-dark` | `#002b36` | `#839496` | `#268bd2` | `solarized-dark` |
+| `solarized-light` | `#fdf6e3` | `#657b83` | `#268bd2` | `solarized-light` |
+| `tokyo-night` | `#1a1b26` | `#c0caf5` | `#7aa2f7` | `tokyo-night` |
+| `one-dark` | `#282c34` | `#abb2bf` | `#61afef` | `one-dark-pro` |
+| `github-dark` | `#0d1117` | `#e6edf3` | `#4493f8` | `github-dark-default` |
+| `github-light` | `#ffffff` | `#1f2328` | `#0969da` | `github-light-default` |
+
+テーマ名は `markterm --help` でも確認できます。存在しないテーマ名（`-t` または `MARKTERM_THEME`）や、16 進カラーでない `--bg`/`--fg` を指定すると終了コード `1` で終了します。
+
+### シンタックスハイライト
+
+言語名を書いたコードブロック（` ```ts `、` ```python `、` ```sh ` など）は、VS Code と同じ文法定義を使う [Shiki](https://shiki.style/) で色付けされます。色付けはレンダリング前にローカルで行うため、ネットワーク接続は不要です。
+
+- 色はテーマに合わせて選ばれます。組み込みテーマでは上の表の Shiki テーマを使います。ターミナルから検出した色（または `--bg`/`--fg` で指定した色）の場合は、背景の輝度に応じて `github-dark-default` か `github-light-default` を選びます。`--bg` でテーマの明暗が入れ替わった場合も同じ規則で選び直します。
+- コードブロックの背景はページのコード背景色のままで、文字色だけを Shiki が決めます。
+- 言語名のないブロック、未対応の言語、Mermaid ブロックは従来どおり表示されます。
+- `--no-highlight` で色付けを無効にできます。
 
 ## 幅とズーム
 
@@ -127,7 +172,7 @@ markterm は固定の配色を持ちません。実行のたびにターミナ�
 
 ## 仕組み
 
-1. **marked** が Markdown を HTML に変換します。` ```mermaid ` フェンスを `<pre class="mermaid">` に変換するカスタム拡張付きです
+1. **marked** が Markdown を HTML に変換します。` ```mermaid ` フェンスを `<pre class="mermaid">` に変換するカスタム拡張付きです。言語名のあるその他のコードブロックは **Shiki** が色付けします
 2. **Playwright** がヘッドレス Chromium で HTML を開き、CDN の MermaidJS を読み込んで、すべての Mermaid ブロックが SVG になるまで待ちます（最大 10 秒。超過した場合は未変換のブロックがあっても続行します）
 3. `<body>` 要素を PNG スクリーンショットとして撮影します。Kitty Graphics と iTerm2 で高さがターミナルの上限を超える場合は、実測したブロック境界で切った帯も撮影します ([幅とズーム](#幅とズーム) を参照)
 4. 選択された画像プロトコルで PNG (分割時は各帯を順に) をターミナルに転送します
@@ -149,13 +194,17 @@ MermaidJS はレンダリング時に jsDelivr CDN からロードするため�
 | 変数 | 説明 |
 |------|------|
 | `MARKTERM_PROTOCOL` | 自動検出を上書き (`kitty`, `iterm2`, `sixel`, `file`)。`-p` はこの変数より優先されます。 |
+| `MARKTERM_THEME` | デフォルトの組み込みテーマ（`-t` と同じ）。`-t` が優先されます。空の値は無視されます。 |
+| `MARKTERM_FONT` | デフォルトの本文フォント（`--font` と同じ）。`--font` が優先されます。 |
+| `MARKTERM_CODE_FONT` | デフォルトのコードフォント（`--code-font` と同じ）。`--code-font` が優先されます。 |
 | `TMPDIR` | 一時 PNG の出力先ディレクトリ。デフォルトは `/tmp/`。 |
 
 ## ライブラリとしての利用
 
-markterm は Bun からライブラリとしても利用できます。エントリポイントは TypeScript ソースなので、Bun（または TypeScript を扱えるバンドラ）が必要です。
+markterm は Node.js または Bun からライブラリとしても利用できます。ES モジュールと TypeScript の型定義を同梱しています。
 
 ```typescript
+import { writeFile } from "node:fs/promises"
 import { markdownToImage, dispose, fallbackTheme } from "markterm"
 
 const png = await markdownToImage("# Hello\n\n```mermaid\ngraph LR\n  A-->B\n```", {
@@ -166,7 +215,7 @@ const png = await markdownToImage("# Hello\n\n```mermaid\ngraph LR\n  A-->B\n```
   mermaidVersion: "11.16.0",
 })
 
-await Bun.write("output.png", png)
+await writeFile("output.png", png)
 await dispose() // 共有 Chromium インスタンスを終了
 ```
 
@@ -185,12 +234,13 @@ const colors = detected
 
 | エクスポート | 説明 |
 |-------------|------|
-| `markdownToImage(source, options?)` | Markdown を PNG の `Uint8Array` にレンダリング。オプション: `width`, `fontSize`, `fontFamily`, `colors`, `mermaidVersion`, `deviceScaleFactor` |
+| `markdownToImage(source, options?)` | Markdown を PNG の `Uint8Array` にレンダリング。オプション: `width`, `fontSize`, `fontFamily`, `codeFontFamily`, `colors`, `mermaidVersion`, `deviceScaleFactor`, `highlight`（デフォルト `true`）。フォントの値はそのまま使われます（汎用フォントは追加されません）。Shiki のテーマは `colors.codeTheme`、未設定なら背景の輝度から選ばれます |
 | `markdownToImageBands(source, options)` | `markdownToImage` に `maxBandHeight` (px) を加えたもの。`{ png, bands }` を返す。`png` は全体、`bands` は実測したブロック境界で切った高さ `maxBandHeight` 以下の横帯。分割が不要なら `bands` は 1 要素 (`=== png`) |
 | `measureCutCandidates(source, options?)` | レンダリングして `{ height, candidates }` を返す。body の高さと、markterm が切断候補とみなす位置 (CSS px)。デバッグ用 |
 | `chooseCuts(candidates, totalHeight, maxBand)` | 帯の決定そのもの。貪欲法で届く範囲の最も低い候補を選び、候補がなければ上限で切る。純粋関数 |
 | `dispose()` | 共有 Chromium インスタンスを終了。処理の最後に一度呼ぶ |
-| `renderMarkdown(source)` | Markdown を HTML 文字列に変換（marked + Mermaid 拡張） |
+| `renderMarkdown(source)` | Markdown を HTML 文字列に変換（marked + Mermaid 拡張）。シンタックスハイライトなし |
+| `renderMarkdownHighlighted(source, { codeTheme })` | `renderMarkdown` と同じく変換し、コードブロックを指定した Shiki テーマで色付けする。非同期 |
 | `buildHtml(html, options?)` | 変換済み HTML をスタイル付きページテンプレートで包む |
 | `detectProtocol()` | 現在のターミナルのプロトコルを返す: `kitty`, `iterm2`, `sixel`, `file` |
 | `detectMultiplexer()` | 環境変数 `TMUX` と `STY` に基づき `"tmux"`、`"screen"`、または `null` を返す |
@@ -201,8 +251,11 @@ const colors = detected
 | `getTerminalSize()` | ターミナルの列数と行数（`pixelWidth`/`pixelHeight` はこのバージョンでは常に `null`） |
 | `estimateViewportWidth(scale)` | `-w auto` の推定ロジック |
 | `queryTerminalColors()` | OSC で `bg`, `fg`, `blue` を問い合わせる。stdin/stdout が TTY でない、または応答がない場合は `null` |
-| `deriveTheme(bg, fg, blue)` | 3 つの HEX 色から `ThemeColors` を組み立てる |
+| `deriveTheme(bg, fg, blue, codeTheme?)` | 3 つの HEX 色と、省略可能な Shiki テーマ名から `ThemeColors` を組み立てる |
 | `fallbackTheme("dark" \| "light")` | 組み込みの `ThemeColors` |
+| `getTheme(name)` | 組み込みテーマ名（[組み込みテーマ](#組み込みテーマ) を参照）に対応する `ThemeColors`。不明な名前なら `null` |
+| `THEME_NAMES` | `getTheme` が受け付けるすべての名前 |
+| `normalizeHex(value)` | `"#rgb"` / `"#rrggbb"` を小文字の `"#rrggbb"` に正規化。16 進カラーでなければ `null` |
 | `isDark(hex)` | Mermaid テーマの選択に使う輝度判定 |
 
 型: `ScreenshotOptions`, `BandOptions`, `ImageBands`, `MeasuredCandidates`, `TemplateOptions`, `ThemeColors`, `TerminalColors`, `TerminalSize`, `Protocol`, `Multiplexer`
