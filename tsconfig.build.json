@@ -1,0 +1,18 @@
+{
+  // Library build: emits dist/*.js + .d.ts runnable on Node and Bun.
+  // Uses Node types only, so any Bun-specific API in src fails the build.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "noEmit": false,
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "exclude": ["src/cli.ts", "src/test"]
+}

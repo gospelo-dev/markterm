@@ -1,4 +1,6 @@
 import { resolve, dirname, extname } from "path"
+import { readFile } from "fs/promises"
+import { existsSync } from "fs"
 import { chromium, type Browser, type Page } from "playwright"
 import { renderMarkdown } from "./markdown.js"
 import { buildHtml, type TemplateOptions } from "./template.js"
@@ -84,12 +86,11 @@ async function withPage<T>(
           filePath = resolve(basePath, decodeURIComponent(src))
         }
         try {
-          const file = Bun.file(filePath)
-          if (await file.exists()) {
-            const bytes = new Uint8Array(await file.arrayBuffer())
+          if (existsSync(filePath)) {
+            const bytes = await readFile(filePath)
             const ext = extname(filePath).toLowerCase()
             const mime = MIME_TYPES[ext] ?? "application/octet-stream"
-            const b64 = Buffer.from(bytes).toString("base64")
+            const b64 = bytes.toString("base64")
             dataUriMap[src] = `data:${mime};base64,${b64}`
           }
         } catch {}

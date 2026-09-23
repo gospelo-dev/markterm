@@ -7,6 +7,8 @@ export type TemplateOptions = {
   width?: number
   fontSize?: number
   fontFamily?: string
+  /** CSS font-family for code and code blocks. Unset: the browser's default monospace font. */
+  codeFontFamily?: string
   colors?: ThemeColors
   mermaidVersion?: string
 }
@@ -55,7 +57,8 @@ export function buildHtml(markdownHtml: string, opts?: TemplateOptions): string 
     overflow-x: auto;
     margin: 0.5em 0;
   }
-  pre code { background: none; padding: 0; }
+  pre code { background: none; padding: 0; }${o.codeFontFamily ? `
+  code, pre { font-family: ${o.codeFontFamily}; }` : ""}
   blockquote {
     border-left: 4px solid ${c.border};
     padding-left: 16px;

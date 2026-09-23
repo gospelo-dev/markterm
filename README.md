@@ -16,8 +16,8 @@ See [docs/QUICKSTART.md](docs/QUICKSTART.md) for a step-by-step setup guide. 日
 
 | Requirement | Notes |
 |-------------|-------|
-| Bun >= 1.1 | markterm is a Bun application. It does not run on Node.js. |
-| Chromium | Installed once with `bunx playwright install chromium`. A headless browser is launched on every run. |
+| Node.js >= 20 or Bun >= 1.1 | Either runtime works. The `markterm` command runs on Node.js; without Node.js, run it with `bunx --bun markterm`. |
+| Chromium | Installed once with `npx playwright install chromium` (or `bunx playwright install chromium`). A headless browser is launched on every run. |
 | Network access | MermaidJS is loaded from the jsDelivr CDN at render time. Offline, Mermaid blocks stay as raw text. |
 | `img2sixel` (Sixel terminals only) | From libsixel. Not needed for Kitty Graphics or iTerm2 terminals. |
 
@@ -39,10 +39,13 @@ Forcing `-p kitty` in iTerm2 does not work (verified with iTerm2 3.7.2: nothing 
 ## Install
 
 ```bash
-bun install -g markterm
+npm install -g markterm
+# or: bun install -g markterm
+# Without Node.js, run it as: bunx --bun markterm
 
 # Chromium is required for rendering (one time)
-bunx playwright install chromium
+npx playwright install chromium
+# or: bunx playwright install chromium
 
 # For Sixel terminals only
 # macOS:  brew install libsixel
@@ -64,22 +67,25 @@ markterm README.md -o output.png
 # Read from stdin
 cat README.md | markterm
 
-# Force a light theme when auto-detection is not available
-cat README.md | markterm -t light
+# Use a built-in color theme instead of the terminal's colors
+markterm README.md -t light
+markterm README.md -t solarized-light
 
 # Use exact colors
 markterm README.md --bg "#ffffff" --fg "#1e1e2e"
 ```
 
-When Markdown comes from stdin, terminal color auto-detection is skipped (see [Theme](#theme)) and the fallback theme selected by `-t` is used.
+When Markdown comes from stdin, terminal color auto-detection is skipped (see [Theme](#theme)) and the `dark` theme is used unless `-t` selects another one.
 
 ## Options
 
 ```
--t, --theme <dark|light>       Fallback theme when color auto-detection fails (default: dark)
-    --bg <#hex>                Background color. Overrides the detected value.
-    --fg <#hex>                Foreground color. Overrides the detected value.
+-t, --theme <name>             Use a built-in color theme instead of the terminal's colors (see Theme)
+    --bg <#hex>                Background color (#rgb or #rrggbb). Overrides the detected or theme value.
+    --fg <#hex>                Foreground color (#rgb or #rrggbb). Overrides the detected or theme value.
 -w, --width <auto|px>          Viewport width in CSS px. auto estimates it from the terminal (default: auto)
+    --font <family>            Body font, as a CSS font-family list (e.g. "Noto Sans JP")
+    --code-font <family>       Font for inline code and code blocks (e.g. "JetBrains Mono")
     --font-size <px>           Body font size in CSS px (default: 16)
 -s, --scale <factor>           Device scale factor passed to Chromium (default: 2)
     --mermaid <version>        MermaidJS version loaded from jsDelivr (default: 11.16.0)
@@ -94,16 +100,45 @@ Positional argument: a Markdown file path. If omitted, Markdown is read from std
 
 Protocol precedence: `-p` > `MARKTERM_PROTOCOL` > auto-detection.
 
+Theme and font precedence: command-line option > environment variable (`MARKTERM_THEME`, `MARKTERM_FONT`, `MARKTERM_CODE_FONT`) > default. See [Environment Variables](#environment-variables).
+
+### Fonts
+
+`--font` and `--code-font` take a CSS `font-family` list, so several fonts can be given in order of preference (`--font "Inter, Noto Sans JP"`). A generic family (`sans-serif` for `--font`, `monospace` for `--code-font`) is appended automatically, so a font that is not installed falls back to a similar one. Fonts are resolved by headless Chromium from the fonts installed on the system. Without these options the body uses the system UI font and code uses the browser's default monospace font. Values containing `;`, `{`, `}`, `<` or `>` are rejected with exit code `1`.
+
 ## Theme
 
-markterm does not ship a fixed color scheme. On every run it asks the terminal for its colors and builds the page style from them:
+By default markterm does not use a fixed color scheme. On every run it asks the terminal for its colors and builds the page style from them:
 
 1. Background via `OSC 11`, foreground via `OSC 10`, and the palette's blue (used for links) via `OSC 4;4`. Each query waits up to 500 ms for a reply.
 2. From the background and foreground it derives the code-block background, table borders, and picks the MermaidJS theme (`dark` or `default`) based on background luminance.
 3. `--bg` and `--fg` override individual detected values. If both are given, the terminal is not queried at all and the link color falls back to `#89b4fa`.
-4. If the query fails or is not possible, the fallback theme selected by `-t` is used: `dark` (Catppuccin-like, `#1e1e2e` on `#cdd6f4`) or `light` (`#ffffff` on `#1e1e2e`).
+4. If the query fails or is not possible, the `dark` theme is used.
 
 Auto-detection requires both stdin and stdout to be a TTY. It is therefore skipped when Markdown is piped in, when output is redirected, and inside some multiplexers. In those cases use `-t` or `--bg`/`--fg`.
+
+### Built-in themes
+
+`-t <name>` sets background, foreground and link color at once from a built-in theme and skips the terminal query. To use a theme by default, set `MARKTERM_THEME` (for example `export MARKTERM_THEME=nord` in your shell profile); `-t` overrides it. `--bg` and `--fg` can still override individual colors on top of it (`-t nord --bg "#000000"`).
+
+| Name | Background | Foreground | Link |
+|------|------------|------------|------|
+| `dark` | `#1e1e2e` | `#cdd6f4` | `#89b4fa` |
+| `light` | `#ffffff` | `#1e1e2e` | `#1e66f5` |
+| `catppuccin-mocha` | `#1e1e2e` | `#cdd6f4` | `#89b4fa` |
+| `catppuccin-latte` | `#eff1f5` | `#4c4f69` | `#1e66f5` |
+| `dracula` | `#282a36` | `#f8f8f2` | `#bd93f9` |
+| `nord` | `#2e3440` | `#d8dee9` | `#81a1c1` |
+| `gruvbox-dark` | `#282828` | `#ebdbb2` | `#83a598` |
+| `gruvbox-light` | `#fbf1c7` | `#3c3836` | `#076678` |
+| `solarized-dark` | `#002b36` | `#839496` | `#268bd2` |
+| `solarized-light` | `#fdf6e3` | `#657b83` | `#268bd2` |
+| `tokyo-night` | `#1a1b26` | `#c0caf5` | `#7aa2f7` |
+| `one-dark` | `#282c34` | `#abb2bf` | `#61afef` |
+| `github-dark` | `#0d1117` | `#e6edf3` | `#4493f8` |
+| `github-light` | `#ffffff` | `#1f2328` | `#0969da` |
+
+`markterm --help` also lists the names. An unknown name (from `-t` or `MARKTERM_THEME`), or a `--bg`/`--fg` value that is not a hex color, exits with code `1`.
 
 ## Width and Zoom
 
@@ -149,13 +184,17 @@ All diagram types provided by the selected MermaidJS version are supported: Flow
 | Variable | Description |
 |----------|-------------|
 | `MARKTERM_PROTOCOL` | Override auto-detected protocol (`kitty`, `iterm2`, `sixel`, `file`). `-p` takes precedence over this variable. |
+| `MARKTERM_THEME` | Default built-in theme, as with `-t`. `-t` takes precedence. An empty value is ignored. |
+| `MARKTERM_FONT` | Default body font, as with `--font`. `--font` takes precedence. |
+| `MARKTERM_CODE_FONT` | Default code font, as with `--code-font`. `--code-font` takes precedence. |
 | `TMPDIR` | Directory for the temp PNG. Defaults to `/tmp/`. |
 
 ## Library Usage
 
-markterm can also be used as a library from Bun. The entry point is TypeScript source, so it requires Bun (or a TypeScript-aware bundler).
+markterm can also be used as a library from Node.js or Bun. It ships as ES modules with TypeScript type definitions.
 
 ```typescript
+import { writeFile } from "node:fs/promises"
 import { markdownToImage, dispose, fallbackTheme } from "markterm"
 
 const png = await markdownToImage("# Hello\n\n```mermaid\ngraph LR\n  A-->B\n```", {
@@ -166,7 +205,7 @@ const png = await markdownToImage("# Hello\n\n```mermaid\ngraph LR\n  A-->B\n```
   mermaidVersion: "11.16.0",
 })
 
-await Bun.write("output.png", png)
+await writeFile("output.png", png)
 await dispose() // closes the shared Chromium instance
 ```
 
@@ -185,7 +224,7 @@ Exported API:
 
 | Export | Description |
 |--------|-------------|
-| `markdownToImage(source, options?)` | Render Markdown to a PNG `Uint8Array`. Options: `width`, `fontSize`, `fontFamily`, `colors`, `mermaidVersion`, `deviceScaleFactor`. |
+| `markdownToImage(source, options?)` | Render Markdown to a PNG `Uint8Array`. Options: `width`, `fontSize`, `fontFamily`, `codeFontFamily`, `colors`, `mermaidVersion`, `deviceScaleFactor`. Font values are used as-is (no generic fallback is appended). |
 | `markdownToImageBands(source, options)` | Like `markdownToImage`, plus `maxBandHeight` (px). Returns `{ png, bands }`: the whole render and its horizontal bands, each at most `maxBandHeight` tall, cut at measured block boundaries. `bands` has one element (`=== png`) when no split is needed. |
 | `measureCutCandidates(source, options?)` | Render and return `{ height, candidates }`: the body height and the cut positions markterm would consider, in CSS px. For debugging. |
 | `chooseCuts(candidates, totalHeight, maxBand)` | The band selection itself: greedy, lowest candidate within reach, hard cut when none. Pure function. |
@@ -203,6 +242,9 @@ Exported API:
 | `queryTerminalColors()` | Query `bg`, `fg`, `blue` via OSC. Returns `null` if stdin/stdout is not a TTY or the terminal does not answer. |
 | `deriveTheme(bg, fg, blue)` | Build `ThemeColors` from three hex colors. |
 | `fallbackTheme("dark" \| "light")` | Built-in `ThemeColors`. |
+| `getTheme(name)` | `ThemeColors` for a built-in theme name (see [Built-in themes](#built-in-themes)), or `null` if unknown. |
+| `THEME_NAMES` | All names accepted by `getTheme`. |
+| `normalizeHex(value)` | `"#rgb"` / `"#rrggbb"` to lowercase `"#rrggbb"`, or `null` if not a hex color. |
 | `isDark(hex)` | Luminance check used to pick the Mermaid theme. |
 
 Types: `ScreenshotOptions`, `BandOptions`, `ImageBands`, `MeasuredCandidates`, `TemplateOptions`, `ThemeColors`, `TerminalColors`, `TerminalSize`, `Protocol`, `Multiplexer`.
