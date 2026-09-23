@@ -85,6 +85,24 @@ describe("markterm CLI", () => {
     expect(e.stderr).toContain("Invalid MARKTERM_CODE_FONT")
   })
 
+  test(
+    "lists the document's links after the image, and --no-links turns it off",
+    () => {
+      const doc = "# Doc\n\nSee [docs](docs/QUICKSTART.md) and [site](https://example.com).\n"
+      const r = run(["-t", "light", "-w", "300", "-s", "1"], doc)
+      expect(r.code).toBe(0)
+      expect(r.stdout).toContain("Links:")
+      expect(r.stdout).toContain(`[1] docs  file://${ROOT}/docs/QUICKSTART.md`)
+      expect(r.stdout).toContain("[2] site  https://example.com")
+      // stdout is a pipe here, so no OSC 8 sequences
+      expect(r.stdout).not.toContain("\x1b]8;;")
+
+      const off = run(["-t", "light", "-w", "300", "-s", "1", "--no-links"], doc)
+      expect(off.stdout).not.toContain("Links:")
+    },
+    60_000,
+  )
+
   test("exits 1 when the input file does not exist", () => {
     const r = run(["no-such-file.md"])
     expect(r.code).toBe(1)
