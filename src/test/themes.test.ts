@@ -8,6 +8,7 @@ import {
   normalizeHex,
   THEME_NAMES,
 } from "../render/themes.js"
+import { isHighlightTheme } from "../render/highlight.js"
 
 describe("isDark", () => {
   test("classifies dark and light backgrounds by luminance", () => {
@@ -82,6 +83,14 @@ describe("getTheme", () => {
         expect(normalizeHex(c)).toBe(c)
       }
     }
+  })
+
+  test("every theme names a Shiki theme that exists", () => {
+    for (const name of THEME_NAMES) {
+      expect(isHighlightTheme(getTheme(name)!.codeTheme!)).toBe(true)
+    }
+    expect(isHighlightTheme(deriveTheme("#000000", "#ffffff", "#0000ff").codeTheme!)).toBe(true)
+    expect(isHighlightTheme(deriveTheme("#ffffff", "#000000", "#0000ff").codeTheme!)).toBe(true)
   })
 
   test("returns null for unknown names", () => {

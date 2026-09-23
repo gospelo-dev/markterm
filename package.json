@@ -43,13 +43,14 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test",
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && bun build src/cli.ts --outfile dist/cli.js --target node --external playwright",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && bun build src/cli.ts --outfile dist/cli.js --target node --external playwright --external shiki",
     "postbuild": "chmod +x dist/cli.js",
     "prepublishOnly": "bun run typecheck && bun test && bun run build"
   },
   "dependencies": {
     "marked": "^15.0.7",
-    "playwright": "^1.52.0"
+    "playwright": "^1.52.0",
+    "shiki": "^4.4.3"
   },
   "engines": {
     "node": ">=20",

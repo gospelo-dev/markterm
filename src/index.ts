@@ -1,4 +1,4 @@
-export { renderMarkdown } from "./render/markdown.js"
+export { renderMarkdown, renderMarkdownHighlighted, type HighlightOptions } from "./render/markdown.js"
 export { buildHtml, type TemplateOptions } from "./render/template.js"
 export {
   markdownToImage,

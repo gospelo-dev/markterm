@@ -7,7 +7,15 @@ import { markdownToImage, markdownToImageBands, dispose } from "./render/screens
 import { detectProtocol, detectMultiplexer, displayInline, maxBandHeightFor, type Protocol } from "./protocol/index.js"
 import { estimateViewportWidth } from "./terminal.js"
 import { queryTerminalColors } from "./colorquery.js"
-import { deriveTheme, fallbackTheme, getTheme, normalizeHex, THEME_NAMES, type ThemeColors } from "./render/themes.js"
+import {
+  deriveTheme,
+  fallbackTheme,
+  getTheme,
+  isDark,
+  normalizeHex,
+  THEME_NAMES,
+  type ThemeColors,
+} from "./render/themes.js"
 import pkg from "../package.json" with { type: "json" }
 
 const VERSION: string = pkg.version
@@ -22,6 +30,7 @@ const { values, positionals } = parseArgs({
     font: { type: "string" },
     "code-font": { type: "string" },
     "font-size": { type: "string", default: "16" },
+    "no-highlight": { type: "boolean", default: false },
     scale: { type: "string", short: "s", default: "2" },
     mermaid: { type: "string", default: "11.16.0" },
     zoom: { type: "string", short: "z", default: "100" },
@@ -54,6 +63,7 @@ Options:
       --code-font <family>       Font for code and code blocks, e.g. "JetBrains Mono"
   -w, --width <auto|px>          Viewport width: auto fits terminal (default: auto)
       --font-size <px>           Body font size (default: 16)
+      --no-highlight             Disable syntax highlighting of code blocks
   -s, --scale <factor>           Device scale factor (default: 2)
       --mermaid <version>        MermaidJS version (default: 11.16.0)
   -z, --zoom <percent>           Display zoom: 1-100% of terminal width (default: 100)
@@ -142,7 +152,10 @@ const codeFontFamily =
 /** Apply --bg / --fg on top of a base theme. */
 function withOverrides(base: ThemeColors): ThemeColors {
   if (!bgOption && !fgOption) return base
-  return deriveTheme(bgOption ?? base.bg, fgOption ?? base.fg, base.link)
+  const bg = bgOption ?? base.bg
+  // Keep the theme's code colors unless --bg flips the page between dark and light
+  const codeTheme = isDark(bg) === isDark(base.bg) ? base.codeTheme : undefined
+  return deriveTheme(bg, fgOption ?? base.fg, base.link, codeTheme)
 }
 
 async function resolveColors(): Promise<ThemeColors> {
@@ -215,6 +228,7 @@ const renderOptions = {
   deviceScaleFactor: scale,
   mermaidVersion,
   basePath,
+  highlight: !values["no-highlight"],
 }
 
 // Ghostty rejects Kitty Graphics images taller than 10000 px; iTerm2 rejects

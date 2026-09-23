@@ -57,7 +57,9 @@ export function buildHtml(markdownHtml: string, opts?: TemplateOptions): string 
     overflow-x: auto;
     margin: 0.5em 0;
   }
-  pre code { background: none; padding: 0; }${o.codeFontFamily ? `
+  pre code { background: none; padding: 0; }
+  /* Shiki sets the theme's own background inline; keep the page's code background */
+  pre.shiki { background: ${c.codeBg} !important; }${o.codeFontFamily ? `
   code, pre { font-family: ${o.codeFontFamily}; }` : ""}
   blockquote {
     border-left: 4px solid ${c.border};
