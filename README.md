@@ -87,6 +87,7 @@ When Markdown comes from stdin, terminal color auto-detection is skipped (see [T
     --font <family>            Body font, as a CSS font-family list (e.g. "Noto Sans JP")
     --code-font <family>       Font for inline code and code blocks (e.g. "JetBrains Mono")
     --font-size <px>           Body font size in CSS px (default: 16)
+    --no-highlight             Disable syntax highlighting of code blocks
 -s, --scale <factor>           Device scale factor passed to Chromium (default: 2)
     --mermaid <version>        MermaidJS version loaded from jsDelivr (default: 11.16.0)
 -z, --zoom <percent>           Display zoom, 1-100 (default: 100)
@@ -121,24 +122,33 @@ Auto-detection requires both stdin and stdout to be a TTY. It is therefore skipp
 
 `-t <name>` sets background, foreground and link color at once from a built-in theme and skips the terminal query. To use a theme by default, set `MARKTERM_THEME` (for example `export MARKTERM_THEME=nord` in your shell profile); `-t` overrides it. `--bg` and `--fg` can still override individual colors on top of it (`-t nord --bg "#000000"`).
 
-| Name | Background | Foreground | Link |
-|------|------------|------------|------|
-| `dark` | `#1e1e2e` | `#cdd6f4` | `#89b4fa` |
-| `light` | `#ffffff` | `#1e1e2e` | `#1e66f5` |
-| `catppuccin-mocha` | `#1e1e2e` | `#cdd6f4` | `#89b4fa` |
-| `catppuccin-latte` | `#eff1f5` | `#4c4f69` | `#1e66f5` |
-| `dracula` | `#282a36` | `#f8f8f2` | `#bd93f9` |
-| `nord` | `#2e3440` | `#d8dee9` | `#81a1c1` |
-| `gruvbox-dark` | `#282828` | `#ebdbb2` | `#83a598` |
-| `gruvbox-light` | `#fbf1c7` | `#3c3836` | `#076678` |
-| `solarized-dark` | `#002b36` | `#839496` | `#268bd2` |
-| `solarized-light` | `#fdf6e3` | `#657b83` | `#268bd2` |
-| `tokyo-night` | `#1a1b26` | `#c0caf5` | `#7aa2f7` |
-| `one-dark` | `#282c34` | `#abb2bf` | `#61afef` |
-| `github-dark` | `#0d1117` | `#e6edf3` | `#4493f8` |
-| `github-light` | `#ffffff` | `#1f2328` | `#0969da` |
+| Name | Background | Foreground | Link | Code highlighting (Shiki) |
+|------|------------|------------|------|---------------------------|
+| `dark` | `#1e1e2e` | `#cdd6f4` | `#89b4fa` | `catppuccin-mocha` |
+| `light` | `#ffffff` | `#1e1e2e` | `#1e66f5` | `github-light-default` |
+| `catppuccin-mocha` | `#1e1e2e` | `#cdd6f4` | `#89b4fa` | `catppuccin-mocha` |
+| `catppuccin-latte` | `#eff1f5` | `#4c4f69` | `#1e66f5` | `catppuccin-latte` |
+| `dracula` | `#282a36` | `#f8f8f2` | `#bd93f9` | `dracula` |
+| `nord` | `#2e3440` | `#d8dee9` | `#81a1c1` | `nord` |
+| `gruvbox-dark` | `#282828` | `#ebdbb2` | `#83a598` | `gruvbox-dark-medium` |
+| `gruvbox-light` | `#fbf1c7` | `#3c3836` | `#076678` | `gruvbox-light-medium` |
+| `solarized-dark` | `#002b36` | `#839496` | `#268bd2` | `solarized-dark` |
+| `solarized-light` | `#fdf6e3` | `#657b83` | `#268bd2` | `solarized-light` |
+| `tokyo-night` | `#1a1b26` | `#c0caf5` | `#7aa2f7` | `tokyo-night` |
+| `one-dark` | `#282c34` | `#abb2bf` | `#61afef` | `one-dark-pro` |
+| `github-dark` | `#0d1117` | `#e6edf3` | `#4493f8` | `github-dark-default` |
+| `github-light` | `#ffffff` | `#1f2328` | `#0969da` | `github-light-default` |
 
 `markterm --help` also lists the names. An unknown name (from `-t` or `MARKTERM_THEME`), or a `--bg`/`--fg` value that is not a hex color, exits with code `1`.
+
+### Syntax highlighting
+
+Fenced code blocks that name a language (` ```ts `, ` ```python `, ` ```sh `, ...) are highlighted with [Shiki](https://shiki.style/), which supports the same grammars as VS Code. Highlighting runs locally before rendering; it needs no network access.
+
+- The highlighting colors follow the theme: each built-in theme uses the Shiki theme in the table above. With colors detected from the terminal (or set with `--bg`/`--fg`), `github-dark-default` or `github-light-default` is chosen from the background luminance. If `--bg` turns a theme from dark to light or back, the same rule applies.
+- The code block keeps the page's code background, so only the text colors come from Shiki.
+- Blocks without a language, with an unknown language, and Mermaid blocks are rendered as before.
+- `--no-highlight` disables highlighting.
 
 ## Width and Zoom
 
@@ -162,7 +172,7 @@ Exit codes: `0` on success, `1` if the input file does not exist or the Markdown
 
 ## How It Works
 
-1. **marked** parses Markdown to HTML with a custom extension that turns ` ```mermaid ` fences into `<pre class="mermaid">` blocks
+1. **marked** parses Markdown to HTML with a custom extension that turns ` ```mermaid ` fences into `<pre class="mermaid">` blocks, and **Shiki** highlights the other fenced code blocks that name a language
 2. **Playwright** loads the HTML in headless Chromium with MermaidJS from CDN and waits until every Mermaid block has produced an SVG (up to 10 seconds; rendering proceeds after that even if some blocks are still raw)
 3. The `<body>` element is captured as a PNG screenshot. For Kitty Graphics and iTerm2, a render taller than the terminal's limit is also captured as bands cut at measured block boundaries (see [Width and Zoom](#width-and-zoom))
 4. The PNG (or each band in turn) is transmitted to the terminal via the selected image protocol
@@ -224,12 +234,13 @@ Exported API:
 
 | Export | Description |
 |--------|-------------|
-| `markdownToImage(source, options?)` | Render Markdown to a PNG `Uint8Array`. Options: `width`, `fontSize`, `fontFamily`, `codeFontFamily`, `colors`, `mermaidVersion`, `deviceScaleFactor`. Font values are used as-is (no generic fallback is appended). |
+| `markdownToImage(source, options?)` | Render Markdown to a PNG `Uint8Array`. Options: `width`, `fontSize`, `fontFamily`, `codeFontFamily`, `colors`, `mermaidVersion`, `deviceScaleFactor`, `highlight` (default `true`). Font values are used as-is (no generic fallback is appended). The Shiki theme is `colors.codeTheme`, or chosen from the background luminance when unset. |
 | `markdownToImageBands(source, options)` | Like `markdownToImage`, plus `maxBandHeight` (px). Returns `{ png, bands }`: the whole render and its horizontal bands, each at most `maxBandHeight` tall, cut at measured block boundaries. `bands` has one element (`=== png`) when no split is needed. |
 | `measureCutCandidates(source, options?)` | Render and return `{ height, candidates }`: the body height and the cut positions markterm would consider, in CSS px. For debugging. |
 | `chooseCuts(candidates, totalHeight, maxBand)` | The band selection itself: greedy, lowest candidate within reach, hard cut when none. Pure function. |
 | `dispose()` | Close the shared Chromium instance. Call once when done. |
-| `renderMarkdown(source)` | Markdown to HTML string (marked + Mermaid extension). |
+| `renderMarkdown(source)` | Markdown to HTML string (marked + Mermaid extension), without syntax highlighting. |
+| `renderMarkdownHighlighted(source, { codeTheme })` | Like `renderMarkdown`, with code blocks highlighted by Shiki using the given Shiki theme name. Async. |
 | `buildHtml(html, options?)` | Wrap rendered HTML in the styled page template. |
 | `detectProtocol()` | Return the protocol for the current terminal: `kitty`, `iterm2`, `sixel`, or `file`. |
 | `detectMultiplexer()` | Return `"tmux"`, `"screen"`, or `null` based on the `TMUX` and `STY` environment variables. |
@@ -240,7 +251,7 @@ Exported API:
 | `getTerminalSize()` | Columns and rows of the terminal (`pixelWidth`/`pixelHeight` are always `null` in this version). |
 | `estimateViewportWidth(scale)` | The `-w auto` heuristic. |
 | `queryTerminalColors()` | Query `bg`, `fg`, `blue` via OSC. Returns `null` if stdin/stdout is not a TTY or the terminal does not answer. |
-| `deriveTheme(bg, fg, blue)` | Build `ThemeColors` from three hex colors. |
+| `deriveTheme(bg, fg, blue, codeTheme?)` | Build `ThemeColors` from three hex colors, plus an optional Shiki theme name. |
 | `fallbackTheme("dark" \| "light")` | Built-in `ThemeColors`. |
 | `getTheme(name)` | `ThemeColors` for a built-in theme name (see [Built-in themes](#built-in-themes)), or `null` if unknown. |
 | `THEME_NAMES` | All names accepted by `getTheme`. |

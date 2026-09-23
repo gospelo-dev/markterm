@@ -10,6 +10,8 @@ All notable changes to markterm are documented here. The format follows [Keep a 
 - `MARKTERM_THEME` environment variable: default theme, as with `-t` (`-t` takes precedence)
 - `--font` / `--code-font` options and `MARKTERM_FONT` / `MARKTERM_CODE_FONT` environment variables to set the body and code fonts. A generic fallback (`sans-serif` / `monospace`) is appended
 - Library API: `getTheme`, `THEME_NAMES`, `normalizeHex`, and the `codeFontFamily` render option
+- Syntax highlighting of fenced code blocks that name a language, with [Shiki](https://shiki.style/). Colors follow the theme (each built-in theme maps to a Shiki theme; detected colors use `github-dark-default` / `github-light-default`). Runs locally, no network needed. `--no-highlight` disables it
+- Library API: `renderMarkdownHighlighted`, the `highlight` render option, and `ThemeColors.codeTheme`
 
 ### Changed
 

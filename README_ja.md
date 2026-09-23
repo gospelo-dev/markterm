@@ -87,6 +87,7 @@ markterm README.md --bg "#ffffff" --fg "#1e1e2e"
     --font <family>            本文フォント。CSS の font-family リスト (例: "Noto Sans JP")
     --code-font <family>       インラインコードとコードブロックのフォント (例: "JetBrains Mono")
     --font-size <px>           本文フォントサイズ (CSS px) (デフォルト: 16)
+    --no-highlight             コードブロックのシンタックスハイライトを無効にする
 -s, --scale <factor>           Chromium に渡すデバイススケール係数 (デフォルト: 2)
     --mermaid <version>        jsDelivr からロードする MermaidJS バージョン (デフォルト: 11.16.0)
 -z, --zoom <percent>           表示ズーム 1-100 (デフォルト: 100)
@@ -121,24 +122,33 @@ markterm はデフォルトでは固定の配色を使いません。実行の�
 
 `-t <name>` を指定すると、組み込みテーマから背景色・前景色・リンク色をまとめて設定し、ターミナルへの問い合わせは行いません。いつも同じテーマを使うなら `MARKTERM_THEME` を設定してください（シェルの設定ファイルに `export MARKTERM_THEME=nord` など）。`-t` はこの設定より優先されます。その上から `--bg` と `--fg` で個別の色を上書きすることもできます（`-t nord --bg "#000000"`）。
 
-| 名前 | 背景色 | 前景色 | リンク色 |
-|------|--------|--------|----------|
-| `dark` | `#1e1e2e` | `#cdd6f4` | `#89b4fa` |
-| `light` | `#ffffff` | `#1e1e2e` | `#1e66f5` |
-| `catppuccin-mocha` | `#1e1e2e` | `#cdd6f4` | `#89b4fa` |
-| `catppuccin-latte` | `#eff1f5` | `#4c4f69` | `#1e66f5` |
-| `dracula` | `#282a36` | `#f8f8f2` | `#bd93f9` |
-| `nord` | `#2e3440` | `#d8dee9` | `#81a1c1` |
-| `gruvbox-dark` | `#282828` | `#ebdbb2` | `#83a598` |
-| `gruvbox-light` | `#fbf1c7` | `#3c3836` | `#076678` |
-| `solarized-dark` | `#002b36` | `#839496` | `#268bd2` |
-| `solarized-light` | `#fdf6e3` | `#657b83` | `#268bd2` |
-| `tokyo-night` | `#1a1b26` | `#c0caf5` | `#7aa2f7` |
-| `one-dark` | `#282c34` | `#abb2bf` | `#61afef` |
-| `github-dark` | `#0d1117` | `#e6edf3` | `#4493f8` |
-| `github-light` | `#ffffff` | `#1f2328` | `#0969da` |
+| 名前 | 背景色 | 前景色 | リンク色 | シンタックスハイライト (Shiki) |
+|------|--------|--------|----------|-------------------------------|
+| `dark` | `#1e1e2e` | `#cdd6f4` | `#89b4fa` | `catppuccin-mocha` |
+| `light` | `#ffffff` | `#1e1e2e` | `#1e66f5` | `github-light-default` |
+| `catppuccin-mocha` | `#1e1e2e` | `#cdd6f4` | `#89b4fa` | `catppuccin-mocha` |
+| `catppuccin-latte` | `#eff1f5` | `#4c4f69` | `#1e66f5` | `catppuccin-latte` |
+| `dracula` | `#282a36` | `#f8f8f2` | `#bd93f9` | `dracula` |
+| `nord` | `#2e3440` | `#d8dee9` | `#81a1c1` | `nord` |
+| `gruvbox-dark` | `#282828` | `#ebdbb2` | `#83a598` | `gruvbox-dark-medium` |
+| `gruvbox-light` | `#fbf1c7` | `#3c3836` | `#076678` | `gruvbox-light-medium` |
+| `solarized-dark` | `#002b36` | `#839496` | `#268bd2` | `solarized-dark` |
+| `solarized-light` | `#fdf6e3` | `#657b83` | `#268bd2` | `solarized-light` |
+| `tokyo-night` | `#1a1b26` | `#c0caf5` | `#7aa2f7` | `tokyo-night` |
+| `one-dark` | `#282c34` | `#abb2bf` | `#61afef` | `one-dark-pro` |
+| `github-dark` | `#0d1117` | `#e6edf3` | `#4493f8` | `github-dark-default` |
+| `github-light` | `#ffffff` | `#1f2328` | `#0969da` | `github-light-default` |
 
 テーマ名は `markterm --help` でも確認できます。存在しないテーマ名（`-t` または `MARKTERM_THEME`）や、16 進カラーでない `--bg`/`--fg` を指定すると終了コード `1` で終了します。
+
+### シンタックスハイライト
+
+言語名を書いたコードブロック（` ```ts `、` ```python `、` ```sh ` など）は、VS Code と同じ文法定義を使う [Shiki](https://shiki.style/) で色付けされます。色付けはレンダリング前にローカルで行うため、ネットワーク接続は不要です。
+
+- 色はテーマに合わせて選ばれます。組み込みテーマでは上の表の Shiki テーマを使います。ターミナルから検出した色（または `--bg`/`--fg` で指定した色）の場合は、背景の輝度に応じて `github-dark-default` か `github-light-default` を選びます。`--bg` でテーマの明暗が入れ替わった場合も同じ規則で選び直します。
+- コードブロックの背景はページのコード背景色のままで、文字色だけを Shiki が決めます。
+- 言語名のないブロック、未対応の言語、Mermaid ブロックは従来どおり表示されます。
+- `--no-highlight` で色付けを無効にできます。
 
 ## 幅とズーム
 
@@ -162,7 +172,7 @@ markterm はデフォルトでは固定の配色を使いません。実行の�
 
 ## 仕組み
 
-1. **marked** が Markdown を HTML に変換します。` ```mermaid ` フェンスを `<pre class="mermaid">` に変換するカスタム拡張付きです
+1. **marked** が Markdown を HTML に変換します。` ```mermaid ` フェンスを `<pre class="mermaid">` に変換するカスタム拡張付きです。言語名のあるその他のコードブロックは **Shiki** が色付けします
 2. **Playwright** がヘッドレス Chromium で HTML を開き、CDN の MermaidJS を読み込んで、すべての Mermaid ブロックが SVG になるまで待ちます（最大 10 秒。超過した場合は未変換のブロックがあっても続行します）
 3. `<body>` 要素を PNG スクリーンショットとして撮影します。Kitty Graphics と iTerm2 で高さがターミナルの上限を超える場合は、実測したブロック境界で切った帯も撮影します ([幅とズーム](#幅とズーム) を参照)
 4. 選択された画像プロトコルで PNG (分割時は各帯を順に) をターミナルに転送します
@@ -224,12 +234,13 @@ const colors = detected
 
 | エクスポート | 説明 |
 |-------------|------|
-| `markdownToImage(source, options?)` | Markdown を PNG の `Uint8Array` にレンダリング。オプション: `width`, `fontSize`, `fontFamily`, `codeFontFamily`, `colors`, `mermaidVersion`, `deviceScaleFactor`。フォントの値はそのまま使われます（汎用フォントは追加されません） |
+| `markdownToImage(source, options?)` | Markdown を PNG の `Uint8Array` にレンダリング。オプション: `width`, `fontSize`, `fontFamily`, `codeFontFamily`, `colors`, `mermaidVersion`, `deviceScaleFactor`, `highlight`（デフォルト `true`）。フォントの値はそのまま使われます（汎用フォントは追加されません）。Shiki のテーマは `colors.codeTheme`、未設定なら背景の輝度から選ばれます |
 | `markdownToImageBands(source, options)` | `markdownToImage` に `maxBandHeight` (px) を加えたもの。`{ png, bands }` を返す。`png` は全体、`bands` は実測したブロック境界で切った高さ `maxBandHeight` 以下の横帯。分割が不要なら `bands` は 1 要素 (`=== png`) |
 | `measureCutCandidates(source, options?)` | レンダリングして `{ height, candidates }` を返す。body の高さと、markterm が切断候補とみなす位置 (CSS px)。デバッグ用 |
 | `chooseCuts(candidates, totalHeight, maxBand)` | 帯の決定そのもの。貪欲法で届く範囲の最も低い候補を選び、候補がなければ上限で切る。純粋関数 |
 | `dispose()` | 共有 Chromium インスタンスを終了。処理の最後に一度呼ぶ |
-| `renderMarkdown(source)` | Markdown を HTML 文字列に変換（marked + Mermaid 拡張） |
+| `renderMarkdown(source)` | Markdown を HTML 文字列に変換（marked + Mermaid 拡張）。シンタックスハイライトなし |
+| `renderMarkdownHighlighted(source, { codeTheme })` | `renderMarkdown` と同じく変換し、コードブロックを指定した Shiki テーマで色付けする。非同期 |
 | `buildHtml(html, options?)` | 変換済み HTML をスタイル付きページテンプレートで包む |
 | `detectProtocol()` | 現在のターミナルのプロトコルを返す: `kitty`, `iterm2`, `sixel`, `file` |
 | `detectMultiplexer()` | 環境変数 `TMUX` と `STY` に基づき `"tmux"`、`"screen"`、または `null` を返す |
@@ -240,7 +251,7 @@ const colors = detected
 | `getTerminalSize()` | ターミナルの列数と行数（`pixelWidth`/`pixelHeight` はこのバージョンでは常に `null`） |
 | `estimateViewportWidth(scale)` | `-w auto` の推定ロジック |
 | `queryTerminalColors()` | OSC で `bg`, `fg`, `blue` を問い合わせる。stdin/stdout が TTY でない、または応答がない場合は `null` |
-| `deriveTheme(bg, fg, blue)` | 3 つの HEX 色から `ThemeColors` を組み立てる |
+| `deriveTheme(bg, fg, blue, codeTheme?)` | 3 つの HEX 色と、省略可能な Shiki テーマ名から `ThemeColors` を組み立てる |
 | `fallbackTheme("dark" \| "light")` | 組み込みの `ThemeColors` |
 | `getTheme(name)` | 組み込みテーマ名（[組み込みテーマ](#組み込みテーマ) を参照）に対応する `ThemeColors`。不明な名前なら `null` |
 | `THEME_NAMES` | `getTheme` が受け付けるすべての名前 |
