@@ -6,6 +6,7 @@ import { existsSync } from "fs"
 import { markdownToImage, markdownToImageBands, dispose } from "./render/screenshot.js"
 import { detectProtocol, detectMultiplexer, displayInline, maxBandHeightFor, type Protocol } from "./protocol/index.js"
 import { estimateViewportWidth } from "./terminal.js"
+import { extractLinks, formatFilePath, formatLinkList } from "./links.js"
 import { queryTerminalColors } from "./colorquery.js"
 import {
   deriveTheme,
@@ -31,6 +32,7 @@ const { values, positionals } = parseArgs({
     "code-font": { type: "string" },
     "font-size": { type: "string", default: "16" },
     "no-highlight": { type: "boolean", default: false },
+    "no-links": { type: "boolean", default: false },
     scale: { type: "string", short: "s", default: "2" },
     mermaid: { type: "string", default: "11.16.0" },
     zoom: { type: "string", short: "z", default: "100" },
@@ -64,6 +66,7 @@ Options:
   -w, --width <auto|px>          Viewport width: auto fits terminal (default: auto)
       --font-size <px>           Body font size (default: 16)
       --no-highlight             Disable syntax highlighting of code blocks
+      --no-links                 Do not list the document's links after the image
   -s, --scale <factor>           Device scale factor (default: 2)
       --mermaid <version>        MermaidJS version (default: 11.16.0)
   -z, --zoom <percent>           Display zoom: 1-100% of terminal width (default: 100)
@@ -243,9 +246,13 @@ const tmpDir = process.env.TMPDIR || "/tmp/"
 const tmpPath = `${tmpDir}markterm-${Date.now()}.png`
 await writeFile(tmpPath, png)
 
+// Printed file paths are OSC 8 hyperlinks when the stream is a terminal
+const stdoutLinks = { hyperlinks: !!process.stdout.isTTY }
+const stderrLinks = { hyperlinks: !!process.stderr.isTTY }
+
 if (values.output) {
   await writeFile(values.output, png)
-  console.log(`Saved to ${values.output} (${png.length} bytes)`)
+  console.log(`Saved to ${formatFilePath(values.output, stdoutLinks)} (${png.length} bytes)`)
 } else {
   const mux = detectMultiplexer()
   if (mux) {
@@ -253,11 +260,20 @@ if (values.output) {
     console.error("Consider using herdr (https://herdr.dev/) for multiplexer support.")
     console.error("")
   }
+  // Links in the image cannot be clicked, so list them after it, with the
+  // rendered image itself as [0]. OSC 8 makes each URL clickable in terminals
+  // that support it (only when stdout is a TTY).
+  const linkList = values["no-links"]
+    ? ""
+    : formatLinkList(extractLinks(source, basePath), { ...stdoutLinks, image: tmpPath })
+
   const escape = mux ? null : displayInline(bands, { protocol: proto })
   if (escape) {
     process.stdout.write(escape)
     process.stdout.write("\n")
-    console.error(`${tmpPath}`)
+    process.stdout.write(linkList)
+    // The list already shows the image as [0]
+    if (!linkList) console.error(formatFilePath(tmpPath, stderrLinks))
   } else {
     if (proto === "sixel") {
       console.error("Sixel display requires img2sixel (libsixel).")
@@ -265,7 +281,8 @@ if (values.output) {
       console.error("  Linux:  apt install libsixel-bin")
       console.error("")
     }
-    console.log(`Saved to: ${tmpPath}`)
+    console.log(`Saved to: ${formatFilePath(tmpPath, stdoutLinks)}`)
+    process.stdout.write(linkList)
   }
 }
 

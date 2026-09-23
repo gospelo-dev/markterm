@@ -12,9 +12,13 @@ All notable changes to markterm are documented here. The format follows [Keep a 
 - Library API: `getTheme`, `THEME_NAMES`, `normalizeHex`, and the `codeFontFamily` render option
 - Syntax highlighting of fenced code blocks that name a language, with [Shiki](https://shiki.style/). Colors follow the theme (each built-in theme maps to a Shiki theme; detected colors use `github-dark-default` / `github-light-default`). Runs locally, no network needed. `--no-highlight` disables it
 - Library API: `renderMarkdownHighlighted`, the `highlight` render option, and `ThemeColors.codeTheme`
+- Link list: links in the rendered image cannot be clicked, so the document's links are printed after the image, numbered, as OSC 8 hyperlinks when stdout is a terminal. `[0]` is the rendered PNG itself. Relative paths become `file://` URLs. `--no-links` turns it off; `-o` never prints it
+- Printed file paths (the temp PNG, the `-o` file) are OSC 8 hyperlinks when the output stream is a terminal
+- Library API: `extractLinks`, `formatLinkList`, `formatFilePath`, `MarkdownLink` type
 
 ### Changed
 
+- With the link list enabled (the default), the temp PNG path after an inline image is shown as `[0]` in the list on stdout instead of on its own line on stderr. `--no-links` restores the previous stderr line
 - `-t <name>` now always applies the named theme and skips the terminal color query. Previously it was only a fallback used when auto-detection failed, so `-t light` had no effect in a terminal that answered the query. `--bg`/`--fg` still override individual colors on top of the theme
 - `--bg`/`--fg` must be hex colors (`#rgb` or `#rrggbb`). Other values such as `--bg light` now exit with code 1 instead of rendering with an invalid color. An unknown `-t` name also exits with code 1
 

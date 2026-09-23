@@ -88,6 +88,7 @@ markterm README.md --bg "#ffffff" --fg "#1e1e2e"
     --code-font <family>       インラインコードとコードブロックのフォント (例: "JetBrains Mono")
     --font-size <px>           本文フォントサイズ (CSS px) (デフォルト: 16)
     --no-highlight             コードブロックのシンタックスハイライトを無効にする
+    --no-links                 画像のあとに文書内のリンク一覧を出力しない (リンク一覧の節を参照)
 -s, --scale <factor>           Chromium に渡すデバイススケール係数 (デフォルト: 2)
     --mermaid <version>        jsDelivr からロードする MermaidJS バージョン (デフォルト: 11.16.0)
 -z, --zoom <percent>           表示ズーム 1-100 (デフォルト: 100)
@@ -164,9 +165,29 @@ markterm はデフォルトでは固定の配色を使いません。実行の�
 ## 出力と一時ファイル
 
 - レンダリングした PNG は常に `$TMPDIR/markterm-<タイムスタンプ>.png`（`TMPDIR` 未設定時は `/tmp/`）に書き出されます。markterm はこれらを削除しません。
-- インライン表示時: 画像のエスケープシーケンスを標準出力に書き、その後に一時ファイルのパスを標準エラー出力に表示します。
-- `-o <file>`: 指定パスに PNG を書き、`Saved to <file> (<bytes> bytes)` を表示します。インライン表示は行いません。
-- `file` プロトコル時、または `img2sixel` のない Sixel 環境: 表示は行わず、`Saved to: <一時ファイルのパス>` を表示するので、別のビューアで開けます。
+- インライン表示時: 画像のエスケープシーケンスを標準出力に書き、続けてリンク一覧（後述）を出力します。一覧の `[0]` が一時ファイルです。`--no-links` を指定した場合は、代わりに一時ファイルのパスを標準エラー出力に表示します。
+- `-o <file>`: 指定パスに PNG を書き、`Saved to <file> (<bytes> bytes)` を表示します。インライン表示とリンク一覧の出力は行いません。
+- `file` プロトコル時、または `img2sixel` のない Sixel 環境: 表示は行わず、`Saved to: <一時ファイルのパス>` を表示するので、別のビューアで開けます。続けてリンク一覧を出力します。
+- 出力先がターミナルの場合、表示するファイルパスはリンク一覧と同じく OSC 8 ハイパーリンクになり、クリックで開けます。
+
+### リンク一覧
+
+画像の中のリンクはクリックできないため、markterm は画像のあとにリンクを一覧表示します。`[0]` は生成した PNG そのもので、文書内のリンクは `[1]` から続きます。
+
+```
+Links:
+  [0] Rendered image  file:///tmp/markterm-1790130710561.png
+  [1] License: MIT  https://github.com/gospelo-dev/markterm/blob/main/LICENSE
+  [2] docs/QUICKSTART_ja.md  file:///path/to/markterm/docs/QUICKSTART_ja.md
+```
+
+- `[0]` は文書にリンクがない場合も常に表示します。
+- 標準出力がターミナルの場合、各 URL は [OSC 8 ハイパーリンク](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda) になり、対応するターミナル（Ghostty、iTerm2、Kitty、WezTerm、foot など）ではクリックで開けます。非対応のターミナルでは URL がそのまま表示されます。標準出力をリダイレクトした場合はプレーンテキストで出力します。
+- リンクは文書に出てくる順に、同じ URL は 1 回だけ表示します。表示名はリンクのテキスト、リンク内が画像の場合（バッジなど）は画像の代替テキストです。
+- 相対パスと絶対パスは Markdown ファイルのディレクトリ（標準入力の場合はカレントディレクトリ）を基準に解決し、`file://` の URL で表示します。
+- ページ内アンカー（`#section`）とリンクでない画像は表示しません。HTML の `<a>` タグで書かれたリンクも対象外です。
+- リンクのテキストと URL に含まれる制御文字は取り除くので、文書のリンクを通じてターミナルのエスケープシーケンスを埋め込まれることはありません。
+- `--no-links` で一覧を出力しないようにできます。その場合、一時ファイルのパスは従来どおり単独の行で表示します。
 
 終了コード: 成功時 `0`、入力ファイルが存在しない、または Markdown が空の場合 `1`。
 
@@ -250,6 +271,9 @@ const colors = detected
 | `ITERM2_MAX_IMAGE_DIMENSION`、`ITERM2_MAX_ROWS`、`iterm2MaxBandHeight(pixelWidth, cols)` | iTerm2 の上限 (`10000`、到達した時点で拒否。1 枚あたり `255` 行) と、幅 `pixelWidth` の描画を `cols` 列で 255 行に収める帯の高さ |
 | `getTerminalSize()` | ターミナルの列数と行数（`pixelWidth`/`pixelHeight` はこのバージョンでは常に `null`） |
 | `estimateViewportWidth(scale)` | `-w auto` の推定ロジック |
+| `extractLinks(source, basePath?)` | 文書内のリンクを `MarkdownLink[]`（`{ text, href, url }`）で返す。[リンク一覧](#リンク一覧) で使うもの |
+| `formatLinkList(links, { hyperlinks, image? })` | リンクを CLI と同じ番号付き一覧に整形する。`hyperlinks` が `true` なら OSC 8 ハイパーリンクを付ける。`image`（ファイルパス）を渡すと、そのファイルを `[0] Rendered image` として先頭に入れる |
+| `formatFilePath(path, { hyperlinks })` | 表示用のファイルパス。`hyperlinks` が `true` なら、指定どおりのパスを表示しつつ絶対パスの `file://` URL へリンクする OSC 8 ハイパーリンクにする |
 | `queryTerminalColors()` | OSC で `bg`, `fg`, `blue` を問い合わせる。stdin/stdout が TTY でない、または応答がない場合は `null` |
 | `deriveTheme(bg, fg, blue, codeTheme?)` | 3 つの HEX 色と、省略可能な Shiki テーマ名から `ThemeColors` を組み立てる |
 | `fallbackTheme("dark" \| "light")` | 組み込みの `ThemeColors` |

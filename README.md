@@ -88,6 +88,7 @@ When Markdown comes from stdin, terminal color auto-detection is skipped (see [T
     --code-font <family>       Font for inline code and code blocks (e.g. "JetBrains Mono")
     --font-size <px>           Body font size in CSS px (default: 16)
     --no-highlight             Disable syntax highlighting of code blocks
+    --no-links                 Do not list the document's links after the image (see Link list)
 -s, --scale <factor>           Device scale factor passed to Chromium (default: 2)
     --mermaid <version>        MermaidJS version loaded from jsDelivr (default: 11.16.0)
 -z, --zoom <percent>           Display zoom, 1-100 (default: 100)
@@ -164,9 +165,29 @@ The page is laid out at a viewport width in CSS px and captured at `--scale` tim
 ## Output and Temp Files
 
 - The rendered PNG is always written to `$TMPDIR/markterm-<timestamp>.png` (`/tmp/` if `TMPDIR` is unset). markterm never deletes these files.
-- Inline display: the image escape sequence is written to stdout, then the temp file path is written to stderr.
-- `-o <file>`: the PNG is written to the given path and `Saved to <file> (<bytes> bytes)` is printed. Nothing is displayed inline.
-- `file` protocol, or Sixel without `img2sixel`: nothing is displayed; `Saved to: <temp path>` is printed so the image can be opened elsewhere.
+- Inline display: the image escape sequence is written to stdout, followed by the link list (see below), whose `[0]` is the temp file. With `--no-links`, the temp file path is written to stderr instead.
+- `-o <file>`: the PNG is written to the given path and `Saved to <file> (<bytes> bytes)` is printed. Nothing is displayed inline, and no link list is printed.
+- `file` protocol, or Sixel without `img2sixel`: nothing is displayed; `Saved to: <temp path>` is printed so the image can be opened elsewhere, followed by the link list.
+- When the output stream is a terminal, printed file paths are clickable OSC 8 hyperlinks, like the link list.
+
+### Link list
+
+Links in the rendered image cannot be clicked, so markterm prints them after the image. `[0]` is the rendered PNG itself; the document's links follow from `[1]`:
+
+```
+Links:
+  [0] Rendered image  file:///tmp/markterm-1790130710561.png
+  [1] License: MIT  https://github.com/gospelo-dev/markterm/blob/main/LICENSE
+  [2] docs/QUICKSTART.md  file:///path/to/markterm/docs/QUICKSTART.md
+```
+
+- `[0]` is always listed, even when the document has no links.
+- When stdout is a terminal, each URL is an [OSC 8 hyperlink](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda), so it can be clicked in terminals that support it (Ghostty, iTerm2, Kitty, WezTerm, foot and others). Other terminals show the plain URL. When stdout is redirected, plain text is written.
+- Links are listed in document order, once per URL. The text is the link's plain text, or the alt text of an image inside the link (badges).
+- Relative and absolute paths are resolved against the Markdown file's directory (the current directory for stdin) and shown as `file://` URLs.
+- In-page anchors (`#section`) and plain images are not listed. Links written as raw HTML `<a>` tags are not listed either.
+- Control characters in link text and URLs are removed, so a document cannot inject terminal escape sequences through its links.
+- `--no-links` turns the list off; the temp file path is then printed on its own line as before.
 
 Exit codes: `0` on success, `1` if the input file does not exist or the Markdown is empty.
 
@@ -250,6 +271,9 @@ Exported API:
 | `ITERM2_MAX_IMAGE_DIMENSION`, `ITERM2_MAX_ROWS`, `iterm2MaxBandHeight(pixelWidth, cols)` | iTerm2's limits (`10000`, rejected when reached; `255` rows per image) and the band height that keeps a `pixelWidth`-wide render within 255 rows on `cols` columns. |
 | `getTerminalSize()` | Columns and rows of the terminal (`pixelWidth`/`pixelHeight` are always `null` in this version). |
 | `estimateViewportWidth(scale)` | The `-w auto` heuristic. |
+| `extractLinks(source, basePath?)` | The document's links as `MarkdownLink[]` (`{ text, href, url }`), as used for the [link list](#link-list). |
+| `formatLinkList(links, { hyperlinks, image? })` | Format links as the CLI's numbered list, with OSC 8 hyperlinks when `hyperlinks` is `true`. With `image` (a file path), that file is listed first as `[0] Rendered image`. |
+| `formatFilePath(path, { hyperlinks })` | A file path for printing; with `hyperlinks`, an OSC 8 hyperlink to its absolute `file://` URL that shows the path as given. |
 | `queryTerminalColors()` | Query `bg`, `fg`, `blue` via OSC. Returns `null` if stdin/stdout is not a TTY or the terminal does not answer. |
 | `deriveTheme(bg, fg, blue, codeTheme?)` | Build `ThemeColors` from three hex colors, plus an optional Shiki theme name. |
 | `fallbackTheme("dark" \| "light")` | Built-in `ThemeColors`. |
