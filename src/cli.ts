@@ -3,10 +3,12 @@ import { resolve, dirname } from "path"
 import { parseArgs } from "util"
 import { readFile, writeFile } from "fs/promises"
 import { existsSync } from "fs"
-import { markdownToImage, markdownToImageBands, dispose } from "./render/screenshot.js"
+import { markdownToImage, markdownToImageBands, markdownToStandaloneHtml, dispose } from "./render/screenshot.js"
 import { detectProtocol, detectMultiplexer, displayInline, maxBandHeightFor, type Protocol } from "./protocol/index.js"
 import { estimateViewportWidth } from "./terminal.js"
 import { extractLinks, formatFilePath, formatLinkList } from "./links.js"
+import { documentKind, probeKittyGraphics, runViewer } from "./viewer/index.js"
+import { chooseMode, shouldProbeKittyGraphics } from "./mode.js"
 import { queryTerminalColors } from "./colorquery.js"
 import {
   deriveTheme,
@@ -33,6 +35,7 @@ const { values, positionals } = parseArgs({
     "font-size": { type: "string", default: "16" },
     "no-highlight": { type: "boolean", default: false },
     "no-links": { type: "boolean", default: false },
+    image: { type: "boolean", short: "i", default: false },
     scale: { type: "string", short: "s", default: "2" },
     mermaid: { type: "string", default: "11.16.0" },
     zoom: { type: "string", short: "z", default: "100" },
@@ -51,11 +54,16 @@ if (values.version) {
 
 if (values.help) {
   const detected = detectProtocol()
-  console.log(`markterm - Render Markdown + MermaidJS as inline terminal images
+  console.log(`markterm - View Markdown + MermaidJS in the terminal
 
-Usage: markterm [options] [file.md]
+Usage: markterm [options] [file]
 
-Reads from stdin if no file is given.
+Opens a full-screen viewer in terminals with the Kitty graphics protocol
+(Ghostty, Kitty, WezTerm; iTerm2 is asked and used when it supports it, e.g.
+3.7.2). Elsewhere, when output is piped, and with -i or -o,
+prints the document as one inline image instead.
+The file can be Markdown, or for the viewer also .html, an image or .pdf.
+Reads Markdown from stdin if no file is given.
 
 Options:
   -t, --theme <name>             Use a built-in color theme instead of the terminal's colors
@@ -67,11 +75,13 @@ Options:
       --font-size <px>           Body font size (default: 16)
       --no-highlight             Disable syntax highlighting of code blocks
       --no-links                 Do not list the document's links after the image
+  -i, --image                    Print one inline image instead of opening the viewer
   -s, --scale <factor>           Device scale factor (default: 2)
       --mermaid <version>        MermaidJS version (default: 11.16.0)
   -z, --zoom <percent>           Display zoom: 1-100% of terminal width (default: 100)
   -p, --protocol <name>          Force protocol: kitty, iterm2, sixel, file
-  -o, --output <file.png>        Save PNG to file instead of displaying
+  -o, --output <file>            Save to a file instead of displaying: .png for an image,
+                                 .html for a self-contained web page
   -h, --help                     Show this help
   -v, --version                  Show version
 
@@ -100,7 +110,18 @@ Environment (command-line options take precedence):
   MARKTERM_PROTOCOL    Override auto-detected protocol
   MARKTERM_THEME       Default theme, like -t
   MARKTERM_FONT        Default body font, like --font
-  MARKTERM_CODE_FONT   Default code font, like --code-font`)
+  MARKTERM_CODE_FONT   Default code font, like --code-font
+
+Viewer keys:
+  j/k, arrows, wheel   Scroll            space/b, PgDn/PgUp  Page down/up
+  g/G, Home/End        Top/bottom        click               Follow a link
+  h, Left, Backspace   Back              r                   Reload the file
+  +/=, -, 0            Zoom in/out/reset s / p               Save as HTML / PNG
+  q, Ctrl-C            Quit
+  Linked .md, .html, image and .pdf files open in the viewer; other links open in
+  the system browser. HTML files keep their own styles; -t and the font options
+  apply to Markdown. Images (png, jpg, gif, webp, svg, avif, bmp, ico) are shown
+  centred. PDFs are drawn with pdf.js loaded from jsDelivr (needs network access).`)
   process.exit(0)
 }
 
@@ -232,6 +253,58 @@ const renderOptions = {
   mermaidVersion,
   basePath,
   highlight: !values["no-highlight"],
+}
+
+const inputPath = positionals[0] ? resolve(positionals[0]) : undefined
+// .html files are shown as they are, image and PDF files on a generated page;
+// anything else (including stdin) is Markdown
+const kind = (inputPath && documentKind(inputPath)) || "markdown"
+const modeInputs = {
+  output: !!values.output,
+  image: !!values.image,
+  stdoutIsTTY: !!process.stdout.isTTY,
+  multiplexer: detectMultiplexer(),
+}
+// iTerm2 draws Kitty graphics in later versions: ask it, rather than guess
+// from a version number. Skipped when -p or MARKTERM_PROTOCOL chose a protocol.
+const protocolForced = proto === values.protocol || !!process.env.MARKTERM_PROTOCOL
+const kittyGraphics =
+  proto === "kitty" ||
+  (shouldProbeKittyGraphics({ ...modeInputs, protocol: proto, protocolForced }) && (await probeKittyGraphics()))
+const mode = chooseMode({ ...modeInputs, kittyGraphics })
+
+if (mode === "image" && kind !== "markdown") {
+  console.error(
+    `${positionals[0]} can only be shown in the viewer, which needs a terminal with the ` +
+      "Kitty graphics protocol (Ghostty, Kitty, WezTerm) on stdout, outside tmux/screen, without -i or -o.",
+  )
+  process.exit(1)
+}
+
+// The viewer: a full-screen page that scrolls, follows clicked links and opens
+// linked files in place. The default on a Kitty-graphics terminal; elsewhere,
+// and with -i or -o, markterm prints one image instead.
+if (mode === "viewer") {
+  const { width: _width, deviceScaleFactor: _scale, basePath: _base, ...render } = renderOptions
+  const path = inputPath
+  await runViewer(
+    { source: kind === "image" || kind === "pdf" ? "" : source, path, basePath, kind },
+    // -z zooms out by showing more CSS pixels per device pixel
+    { render, scale: (scale * zoom) / 100 },
+  )
+  await dispose()
+  process.exit(0)
+}
+
+// -o file.html: a self-contained HTML file instead of a PNG
+if (values.output && /\.html?$/i.test(values.output)) {
+  const { width: _width, deviceScaleFactor: _scale, ...docOptions } = renderOptions
+  const html = await markdownToStandaloneHtml(source, docOptions)
+  await writeFile(values.output, html)
+  const shown = formatFilePath(values.output, { hyperlinks: !!process.stdout.isTTY })
+  console.log(`Saved to ${shown} (${Buffer.byteLength(html)} bytes)`)
+  await dispose()
+  process.exit(0)
 }
 
 // Ghostty rejects Kitty Graphics images taller than 10000 px; iTerm2 rejects

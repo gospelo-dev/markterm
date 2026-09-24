@@ -3,6 +3,7 @@ export { buildHtml, type TemplateOptions } from "./render/template.js"
 export {
   markdownToImage,
   markdownToImageBands,
+  markdownToStandaloneHtml,
   measureCutCandidates,
   dispose,
   type ScreenshotOptions,
@@ -24,6 +25,7 @@ export {
 } from "./protocol/index.js"
 export { getTerminalSize, estimateViewportWidth, type TerminalSize } from "./terminal.js"
 export { extractLinks, formatLinkList, formatFilePath, type MarkdownLink } from "./links.js"
+export { markdownToDocument, type DocumentOptions } from "./render/document.js"
 export { queryTerminalColors, type TerminalColors } from "./colorquery.js"
 export {
   deriveTheme,

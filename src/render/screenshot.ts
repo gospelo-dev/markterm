@@ -2,8 +2,7 @@ import { resolve, dirname, extname } from "path"
 import { readFile } from "fs/promises"
 import { existsSync } from "fs"
 import { chromium, type Browser, type Page } from "playwright"
-import { renderMarkdown, renderMarkdownHighlighted } from "./markdown.js"
-import { DEFAULT_DARK_CODE_THEME, DEFAULT_LIGHT_CODE_THEME, fallbackTheme, isDark } from "./themes.js"
+import { markdownToDocument, renderBody, type DocumentOptions } from "./document.js"
 import { buildHtml, type TemplateOptions } from "./template.js"
 import { chooseCuts, MEASURE_CANDIDATES_JS, type MeasuredCandidates } from "./bands.js"
 
@@ -20,7 +19,8 @@ const MIME_TYPES: Record<string, string> = {
 
 let browserInstance: Browser | null = null
 
-async function getBrowser(): Promise<Browser> {
+/** The shared headless Chromium, launched on first use. Closed by dispose(). */
+export async function getBrowser(): Promise<Browser> {
   if (browserInstance?.isConnected()) return browserInstance
   browserInstance = await chromium.launch()
   return browserInstance
@@ -40,13 +40,6 @@ export type ScreenshotOptions = TemplateOptions & {
   highlight?: boolean
 }
 
-async function toHtml(source: string, opts: ScreenshotOptions | undefined): Promise<string> {
-  if (opts?.highlight === false) return renderMarkdown(source)
-  const colors = opts?.colors ?? fallbackTheme("dark")
-  const codeTheme = colors.codeTheme ?? (isDark(colors.bg) ? DEFAULT_DARK_CODE_THEME : DEFAULT_LIGHT_CODE_THEME)
-  return renderMarkdownHighlighted(source, { codeTheme })
-}
-
 export type BandOptions = ScreenshotOptions & {
   /** Maximum pixel height of one band (e.g. KITTY_MAX_IMAGE_DIMENSION). */
   maxBandHeight: number
@@ -64,7 +57,7 @@ async function withPage<T>(
   opts: ScreenshotOptions | undefined,
   fn: (page: Page) => Promise<T>,
 ): Promise<T> {
-  const html = buildHtml(await toHtml(source, opts), opts)
+  const html = buildHtml(await renderBody(source, opts), opts)
   const width = opts?.width ?? 800
   const scale = opts?.deviceScaleFactor ?? 2
 
@@ -76,53 +69,80 @@ async function withPage<T>(
 
   try {
     await page.setContent(html, { waitUntil: "networkidle" })
-
-    const basePath = opts?.basePath ?? process.cwd()
-    const srcs: string[] = await page.evaluate(() =>
-      Array.from(document.querySelectorAll("img"))
-        .map((img) => img.getAttribute("src") ?? "")
-        .filter((s) => s && !s.startsWith("data:") && !s.startsWith("http:") && !s.startsWith("https:"))
-    )
-    if (srcs.length > 0) {
-      const dataUriMap: Record<string, string> = {}
-      for (const src of srcs) {
-        if (dataUriMap[src]) continue
-        let filePath: string
-        if (src.startsWith("file://")) {
-          filePath = decodeURIComponent(new URL(src).pathname)
-        } else if (src.startsWith("/")) {
-          filePath = src
-        } else {
-          filePath = resolve(basePath, decodeURIComponent(src))
-        }
-        try {
-          if (existsSync(filePath)) {
-            const bytes = await readFile(filePath)
-            const ext = extname(filePath).toLowerCase()
-            const mime = MIME_TYPES[ext] ?? "application/octet-stream"
-            const b64 = bytes.toString("base64")
-            dataUriMap[src] = `data:${mime};base64,${b64}`
-          }
-        } catch {}
-      }
-      if (Object.keys(dataUriMap).length > 0) {
-        await page.evaluate((map) => {
-          for (const img of document.querySelectorAll("img")) {
-            const src = img.getAttribute("src")
-            if (src && map[src]) img.setAttribute("src", map[src])
-          }
-        }, dataUriMap)
-      }
-    }
-
-    await page.waitForFunction(() => {
-      const els = document.querySelectorAll("pre.mermaid")
-      return Array.from(els).every((el) => el.querySelector("svg") !== null)
-    }, { timeout: 10_000 }).catch(() => {})
+    await inlineLocalImages(page, opts?.basePath ?? process.cwd())
+    await waitForMermaid(page)
     return await fn(page)
   } finally {
     await page.close()
   }
+}
+
+/**
+ * A self-contained HTML file for the Markdown: rendered as the viewer shows it
+ * (theme, highlighting, page layout), with local images embedded as data URIs
+ * and Mermaid diagrams already drawn as SVG, so it can be opened anywhere.
+ */
+export async function markdownToStandaloneHtml(source: string, opts?: DocumentOptions): Promise<string> {
+  const browser = await getBrowser()
+  const page = await browser.newPage()
+  try {
+    await page.setContent(await markdownToDocument(source, opts), { waitUntil: "networkidle" })
+    await inlineLocalImages(page, opts?.basePath ?? process.cwd())
+    await waitForMermaid(page)
+    return await page.content()
+  } finally {
+    await page.close()
+  }
+}
+
+/**
+ * Replace local image sources (relative, absolute or file:// paths) with data
+ * URIs. A page loaded with setContent cannot read file:// URLs itself.
+ */
+export async function inlineLocalImages(page: Page, basePath: string): Promise<void> {
+  const srcs: string[] = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("img"))
+      .map((img) => img.getAttribute("src") ?? "")
+      .filter((s) => s && !s.startsWith("data:") && !s.startsWith("http:") && !s.startsWith("https:"))
+  )
+  if (srcs.length === 0) return
+  const dataUriMap: Record<string, string> = {}
+  for (const src of srcs) {
+    if (dataUriMap[src]) continue
+    let filePath: string
+    if (src.startsWith("file://")) {
+      filePath = decodeURIComponent(new URL(src).pathname)
+    } else if (src.startsWith("/")) {
+      filePath = src
+    } else {
+      filePath = resolve(basePath, decodeURIComponent(src))
+    }
+    try {
+      if (existsSync(filePath)) {
+        const bytes = await readFile(filePath)
+        const ext = extname(filePath).toLowerCase()
+        const mime = MIME_TYPES[ext] ?? "application/octet-stream"
+        const b64 = bytes.toString("base64")
+        dataUriMap[src] = `data:${mime};base64,${b64}`
+      }
+    } catch {}
+  }
+  if (Object.keys(dataUriMap).length > 0) {
+    await page.evaluate((map) => {
+      for (const img of document.querySelectorAll("img")) {
+        const src = img.getAttribute("src")
+        if (src && map[src]) img.setAttribute("src", map[src])
+      }
+    }, dataUriMap)
+  }
+}
+
+/** Wait until every Mermaid block has produced an SVG, for at most 10 seconds. */
+export async function waitForMermaid(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const els = document.querySelectorAll("pre.mermaid")
+    return Array.from(els).every((el) => el.querySelector("svg") !== null)
+  }, { timeout: 10_000 }).catch(() => {})
 }
 
 export async function markdownToImage(

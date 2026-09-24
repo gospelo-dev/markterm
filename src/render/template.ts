@@ -11,6 +11,44 @@ export type TemplateOptions = {
   codeFontFamily?: string
   colors?: ThemeColors
   mermaidVersion?: string
+  /**
+   * For viewing the page in a browser instead of capturing it: the body fills
+   * the window instead of using `width`, relative image and link URLs are
+   * resolved against `baseUrl` (a file:// URL of the Markdown's directory,
+   * ending in "/"), and headings get GitHub-style ids for "#section" links.
+   */
+  interactive?: { baseUrl: string }
+}
+
+/**
+ * Runs in the page for `interactive`. Resolves relative URLs against the
+ * Markdown's directory without a <base> tag, which would also redirect
+ * "#section" links, and adds heading ids like GitHub's.
+ */
+function interactiveScript(baseUrl: string): string {
+  // JSON is a valid JS literal; escape "<" so the value cannot end the <script>
+  const base = JSON.stringify(baseUrl).replace(/</g, "\\u003c")
+  return `<script>
+  (() => {
+    const base = ${base};
+    const relative = (u) => !!u && !u.startsWith("#") && !u.startsWith("//") && !/^[a-z][a-z0-9+.-]*:/i.test(u);
+    for (const [sel, attr] of [["img[src]", "src"], ["a[href]", "href"]]) {
+      for (const el of document.querySelectorAll(sel)) {
+        const value = el.getAttribute(attr);
+        if (relative(value)) el.setAttribute(attr, new URL(value, base).href);
+      }
+    }
+    const used = new Map();
+    for (const h of document.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
+      if (h.id) continue;
+      const slug = h.textContent.trim().toLowerCase().replace(/[^\\p{L}\\p{N}\\s_-]/gu, "").replace(/\\s/g, "-");
+      const n = used.get(slug) ?? 0;
+      used.set(slug, n + 1);
+      h.id = n ? slug + "-" + n : slug;
+    }
+  })();
+</script>
+`
 }
 
 const DEFAULTS = {
@@ -29,9 +67,10 @@ export function buildHtml(markdownHtml: string, opts?: TemplateOptions): string 
 <head>
 <meta charset="utf-8">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }${o.interactive ? `
+  html { background: ${c.bg}; }` : ""}
   body {
-    width: ${o.width}px;
+    ${o.interactive ? "max-width: 980px; margin: 0 auto;" : `width: ${o.width}px;`}
     font-family: ${o.fontFamily};
     font-size: ${o.fontSize}px;
     line-height: 1.6;
@@ -85,7 +124,7 @@ export function buildHtml(markdownHtml: string, opts?: TemplateOptions): string 
 </head>
 <body>
 ${markdownHtml}
-<script src="https://cdn.jsdelivr.net/npm/mermaid@${o.mermaidVersion}/dist/mermaid.min.js"></script>
+${o.interactive ? interactiveScript(o.interactive.baseUrl) : ""}<script src="https://cdn.jsdelivr.net/npm/mermaid@${o.mermaidVersion}/dist/mermaid.min.js"></script>
 <script>
   mermaid.initialize({ startOnLoad: true, theme: '${c.mermaid}' });
 </script>
