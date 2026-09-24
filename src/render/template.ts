@@ -124,10 +124,17 @@ export function buildHtml(markdownHtml: string, opts?: TemplateOptions): string 
 </head>
 <body>
 ${markdownHtml}
-${o.interactive ? interactiveScript(o.interactive.baseUrl) : ""}<script src="https://cdn.jsdelivr.net/npm/mermaid@${o.mermaidVersion}/dist/mermaid.min.js"></script>
-<script>
-  mermaid.initialize({ startOnLoad: true, theme: '${c.mermaid}' });
-</script>
-</body>
+${o.interactive ? interactiveScript(o.interactive.baseUrl) : ""}${
+    // Load MermaidJS (from the network) only for documents that have diagrams
+    markdownHtml.includes('class="mermaid"') ? mermaidScripts(o.mermaidVersion, c.mermaid) : ""
+  }</body>
 </html>`
+}
+
+function mermaidScripts(version: string, theme: ThemeColors["mermaid"]): string {
+  return `<script src="https://cdn.jsdelivr.net/npm/mermaid@${version}/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: '${theme}' });
+</script>
+`
 }
