@@ -1,11 +1,16 @@
 {
   "name": "markterm",
-  "version": "0.3.0",
-  "description": "Render Markdown + MermaidJS as inline images in Ghostty, Kitty, iTerm2, WezTerm and other terminals.",
+  "version": "0.4.0",
+  "description": "View Markdown + MermaidJS in the terminal: a full-screen viewer with clickable links that also opens HTML, images and PDFs, or inline images. For Ghostty, Kitty, WezTerm, iTerm2 and other terminals.",
   "keywords": [
     "markdown",
     "mermaid",
     "terminal",
+    "viewer",
+    "preview",
+    "markdown-viewer",
+    "html",
+    "pdf",
     "kitty",
     "ghostty",
     "iterm2",
@@ -50,7 +55,7 @@
   },
   "dependencies": {
     "marked": "^15.0.7",
-    "playwright": "^1.52.0",
+    "playwright": "^1.63.0",
     "shiki": "^4.4.3"
   },
   "engines": {

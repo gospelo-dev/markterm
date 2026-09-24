@@ -39,7 +39,7 @@ describe("markterm CLI", () => {
   test("--help lists options and the detected protocol", () => {
     const r = run(["--help"])
     expect(r.code).toBe(0)
-    expect(r.stdout).toContain("Usage: markterm [options] [file.md]")
+    expect(r.stdout).toContain("Usage: markterm [options] [file]")
     expect(r.stdout).toContain("--bg <#hex>")
     expect(r.stdout).toContain("Detected terminal protocol: file")
   })
@@ -104,6 +104,73 @@ describe("markterm CLI", () => {
     },
     60_000,
   )
+
+  test(
+    "-o file.html writes a self-contained page: local images embedded, code highlighted",
+    () => {
+      const fs = require("node:fs")
+      const dir = mkdtempSync(join(tmpdir(), "markterm-cli-html-"))
+      try {
+        fs.copyFileSync(join(import.meta.dir, "fixtures", "red-1x1.png"), join(dir, "dot.png"))
+        const md = join(dir, "doc.md")
+        fs.writeFileSync(md, "# Doc\n\n![dot](dot.png)\n\n```ts\nconst a = 1\n```\n")
+        const out = join(dir, "out", "doc.html")
+        fs.mkdirSync(join(dir, "out"))
+        const r = run([md, "-o", out, "-t", "light"])
+        expect(r.code).toBe(0)
+        expect(r.stdout).toContain(`Saved to ${out}`)
+        const html = fs.readFileSync(out, "utf-8") as string
+        expect(html).toContain("<h1")
+        expect(html).toContain('src="data:image/png;base64,')
+        expect(html).not.toContain('src="file:')
+        expect(html).toContain('class="shiki')
+        // No PNG is written for an .html output
+        expect(r.stdout).not.toContain("Links:")
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+    60_000,
+  )
+
+  describe("viewer and image modes", () => {
+    test("with piped output, Markdown is printed as an image (and -i does the same)", () => {
+      // The test environment forces MARKTERM_PROTOCOL=file and stdout is a pipe
+      const r = run(["-t", "light", "-w", "300", "-s", "1"], "# Hi\n")
+      expect(r.code).toBe(0)
+      expect(r.stdout).toContain("Saved to: ")
+      const i = run(["-i", "-t", "light", "-w", "300", "-s", "1"], "# Hi\n")
+      expect(i.code).toBe(0)
+      expect(i.stdout).toContain("Saved to: ")
+    }, 60_000)
+
+    test("files only the viewer can show fail with the reason when an image is printed", () => {
+      const dir = mkdtempSync(join(tmpdir(), "markterm-cli-kind-"))
+      try {
+        const page = join(dir, "page.html")
+        require("node:fs").writeFileSync(page, "<p>x</p>")
+        const r = run([page, "-t", "light"])
+        expect(r.code).toBe(1)
+        expect(r.stderr).toContain("can only be shown in the viewer")
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    test("-b is gone", () => {
+      const r = run(["-b", "-t", "light"], "# Hi\n")
+      expect(r.code).not.toBe(0)
+      expect(r.stderr).toContain("-b")
+    })
+
+    test("--help describes the default viewer, -i and the viewer keys", () => {
+      const r = run(["--help"])
+      expect(r.stdout).toContain("Opens a full-screen viewer")
+      expect(r.stdout).toContain("-i, --image")
+      expect(r.stdout).toContain("Viewer keys:")
+      expect(r.stdout).not.toContain("--browser")
+    })
+  })
 
   test("exits 1 when the input file does not exist", () => {
     const r = run(["no-such-file.md"])
