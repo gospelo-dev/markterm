@@ -1,14 +1,17 @@
 # markterm
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-1E90FF.svg?style=flat)](https://github.com/gospelo-dev/markterm/blob/main/LICENSE) [![Mermaid](https://img.shields.io/badge/Mermaid-11.16.0_(default)-FF3670.svg?style=flat&logo=mermaid&logoColor=white)](https://mermaid.js.org/) [![Playwright](https://img.shields.io/badge/Playwright-Chromium-2EAD33.svg?style=flat&logo=playwright&logoColor=white)](https://playwright.dev/) [![Ghostty](https://img.shields.io/badge/Ghostty-supported-1C1C1C.svg?style=flat)](https://ghostty.org/) [![iTerm2](https://img.shields.io/badge/iTerm2-supported-000000.svg?style=flat)](https://iterm2.com/) [![herdr](https://img.shields.io/badge/herdr-supported-8B5CF6.svg?style=flat)](https://herdr.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-1E90FF.svg?style=flat)](https://github.com/gospelo-dev/markterm/blob/main/LICENSE) [![Mermaid](https://img.shields.io/badge/Mermaid-11.16.0_(default)-FF3670.svg?style=flat&logo=mermaid&logoColor=white)](https://mermaid.js.org/) [![Playwright](https://img.shields.io/badge/Playwright-Chromium-2EAD33.svg?style=flat&logo=playwright&logoColor=white)](https://playwright.dev/) [![Ghostty](https://img.shields.io/badge/Ghostty-supported-1C1C1C.svg?style=flat)](https://ghostty.org/) [![Kitty](https://img.shields.io/badge/Kitty-supported-784421.svg?style=flat)](https://sw.kovidgoyal.net/kitty/) [![WezTerm](https://img.shields.io/badge/WezTerm-supported-4E49EE.svg?style=flat)](https://wezterm.org/) [![iTerm2](https://img.shields.io/badge/iTerm2-supported-000000.svg?style=flat)](https://iterm2.com/) [![herdr](https://img.shields.io/badge/herdr-supported-8B5CF6.svg?style=flat)](https://herdr.dev/)
 
 <p align="center"><img src="https://github.com/gospelo-dev/markterm/blob/main/assets/hero.jpg?raw=true" alt="markterm: Render Markdown inline in any terminal" width="820"></p>
 
-<p align="center"><img src="https://github.com/gospelo-dev/markterm/blob/main/assets/demo.gif?raw=true" alt="markterm demo: rendering README.md inline in Ghostty" width="820"></p>
+<p align="center"><img src="https://github.com/gospelo-dev/markterm/blob/main/assets/demo.gif?raw=true" alt="markterm demo: opening README.md in the viewer, scrolling and following a link" width="820"></p>
 
-Render Markdown + MermaidJS as inline images in your terminal.
+View Markdown + MermaidJS in your terminal, rendered like a web page.
 
-markterm takes a Markdown file, renders it with full styling and MermaidJS diagram support in a headless Chromium, and displays the resulting PNG directly in your terminal using the terminal's native image protocol. The colors follow your terminal's own background and foreground, so the preview looks like part of the terminal.
+markterm renders Markdown with full styling, MermaidJS diagrams and syntax highlighting in a headless Chromium, and shows it in the terminal through the terminal's own graphics protocol. The colors follow your terminal's background and foreground, so the page looks like part of the terminal.
+
+- **Viewer** (the default in terminals with Kitty graphics): a full-screen page you can scroll, zoom and click through. Links to other Markdown, HTML, image and PDF files open in place, animated GIFs and WebPs play, and the page can be saved as HTML or PNG.
+- **Image mode** (`-i`, and the fallback everywhere else): the document is printed once as an inline image, followed by a list of its links.
 
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for a step-by-step setup guide. 日本語版: [README_ja.md](README_ja.md)
 
@@ -18,10 +21,23 @@ See [docs/QUICKSTART.md](docs/QUICKSTART.md) for a step-by-step setup guide. 日
 |-------------|-------|
 | Node.js >= 20 or Bun >= 1.1 | Either runtime works. The `markterm` command runs on Node.js; without Node.js, run it with `bunx --bun markterm`. |
 | Chromium | Installed once with `npx playwright install chromium` (or `bunx playwright install chromium`). A headless browser is launched on every run. |
-| Network access | MermaidJS is loaded from the jsDelivr CDN at render time. Offline, Mermaid blocks stay as raw text. |
-| `img2sixel` (Sixel terminals only) | From libsixel. Not needed for Kitty Graphics or iTerm2 terminals. |
+| Network access | MermaidJS, and pdf.js for PDFs in the viewer, are loaded from the jsDelivr CDN. Offline, Mermaid blocks stay as raw text and PDFs cannot be shown. |
+| `img2sixel` (Sixel terminals only) | From libsixel. Only for image mode on Sixel terminals. |
 
 ## Supported Terminals
+
+markterm opens the viewer when stdout is a terminal that draws Kitty graphics, outside tmux/screen, and neither `-i` nor `-o` is given. In every other case it uses image mode, like `less` pages on a terminal and prints through a pipe.
+
+| Terminal | Default | Mouse pointer over links | Verified |
+|----------|---------|--------------------------|----------|
+| Ghostty | Viewer | Hand pointer | Yes |
+| Kitty | Viewer | Hand pointer | Yes |
+| WezTerm | Viewer | Unchanged (the link target is shown in the status line) | Yes |
+| iTerm2 | Viewer when it answers the Kitty graphics query (3.7.2 does); otherwise image mode | Unchanged (the link target is shown in the status line) | 3.7.2 |
+| foot, xterm, mlterm, Konsole, mintty, Black Box | Image mode (Sixel) | - | - |
+| Anything else, pipes, CI | Image mode (the PNG is saved and its path printed) | - | - |
+
+The image protocol for image mode is detected in this order:
 
 | Protocol | Terminals | Auto-detected by |
 |----------|-----------|------------------|
@@ -30,11 +46,9 @@ See [docs/QUICKSTART.md](docs/QUICKSTART.md) for a step-by-step setup guide. 日
 | Sixel | foot, xterm, mlterm, Konsole, mintty (Git Bash), Black Box | `TERM_PROGRAM` containing `foot` / `mlterm` / `konsole` / `mintty` / `blackbox`, or `TERM=xterm`. Only selected when `img2sixel` is on `PATH`. |
 | file (fallback) | Any terminal | Used when nothing above matches. The PNG is saved to a temp file and its path is printed instead of an inline image. |
 
-Detection runs in the order listed. `markterm --help` prints the detected protocol for the current terminal.
+`markterm --help` prints the detected protocol for the current terminal. For iTerm2, markterm asks the terminal whether it supports Kitty graphics (a 1x1 query followed by a Device Attributes request, so terminals without it answer at once) and opens the viewer only if it does. `-p` or `MARKTERM_PROTOCOL` skips that question.
 
-**Multiplexers**: [herdr](https://herdr.dev/) is supported — inline images display correctly inside herdr sessions with no special configuration. tmux and screen are detected but inline display is disabled because image escape sequences do not pass through them reliably; markterm falls back to saving the PNG and printing its path. Consider migrating from tmux/screen to herdr for full image support.
-
-Forcing `-p kitty` in iTerm2 does not work (verified with iTerm2 3.7.2: nothing is drawn); use the auto-detected `iterm2` protocol there.
+**Multiplexers**: [herdr](https://herdr.dev/) is supported: the viewer and inline images work inside herdr sessions with no special configuration (verified; the mouse pointer does not change over links there, the status line shows the target). tmux and screen are detected; markterm uses image mode there and, because image escape sequences do not pass through them reliably, saves the PNG and prints its path. Consider migrating from tmux/screen to herdr for full image support.
 
 ## Install
 
@@ -47,7 +61,7 @@ npm install -g markterm
 npx playwright install chromium
 # or: bunx playwright install chromium
 
-# For Sixel terminals only
+# For image mode on Sixel terminals only
 # macOS:  brew install libsixel
 # Linux:  apt install libsixel-bin
 ```
@@ -55,20 +69,25 @@ npx playwright install chromium
 ## Usage
 
 ```bash
-# Display inline in the terminal
+# Open the viewer (Ghostty, Kitty, WezTerm, iTerm2 with Kitty graphics)
 markterm README.md
 
-# Zoom out to 50%: content shrinks, image still fills the terminal width
-markterm README.md -z 50
+# The viewer also opens HTML, image and PDF files
+markterm page.html
+markterm diagram.png
+markterm paper.pdf
 
-# Save as PNG instead of displaying
-markterm README.md -o output.png
+# Print one inline image instead
+markterm README.md -i
 
-# Read from stdin
+# Save as a self-contained HTML page, or as a PNG
+markterm README.md -o README.html
+markterm README.md -o README.png
+
+# Read Markdown from stdin (keys are read from the terminal, so the viewer still works)
 cat README.md | markterm
 
 # Use a built-in color theme instead of the terminal's colors
-markterm README.md -t light
 markterm README.md -t solarized-light
 
 # Use exact colors
@@ -77,28 +96,83 @@ markterm README.md --bg "#ffffff" --fg "#1e1e2e"
 
 When Markdown comes from stdin, terminal color auto-detection is skipped (see [Theme](#theme)) and the `dark` theme is used unless `-t` selects another one.
 
+## Viewer
+
+The viewer renders the document in headless Chromium and shows the part that fits the terminal as a Kitty graphics image, with a status line at the bottom. Scrolling and clicks are mapped back onto the page.
+
+### Keys
+
+| Keys | Action |
+|------|--------|
+| `j` / `k`, arrows, mouse wheel | Scroll |
+| `Space` / `b`, `PgDn` / `PgUp` | Page down / up |
+| `g` / `G`, `Home` / `End` | Top / bottom |
+| Click | Follow a link |
+| `h`, `Left`, `Backspace` | Back |
+| `+` (or `=`), `-`, `0` | Zoom in, zoom out, reset |
+| `r` | Reload the file from disk |
+| `s` / `p` | Save as HTML / PNG (Markdown only) |
+| `q`, `Ctrl-C` | Quit |
+
+### Links
+
+- Links to local `.md`, `.html`, image and `.pdf` files open in the viewer, with a history for `h`. A fragment (`other.md#install`) scrolls to that heading.
+- In-page links (`#section`) scroll the page. Headings get GitHub-style ids, including non-ASCII ones.
+- Other links (`https://`, `mailto:`, other files) open with the system's default handler.
+- Hovering a link shows its target in the status line. In Ghostty and Kitty the mouse pointer also turns into a hand (OSC 22).
+
+### File types
+
+| Type | Shown as |
+|------|----------|
+| Markdown (`.md`, `.markdown`, stdin) | Rendered with the theme, fonts, syntax highlighting and MermaidJS, like image mode |
+| HTML (`.html`, `.htm`) | The page as it is, with its own CSS, images and scripts. `-t` and the font options do not apply |
+| Images (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`, `.avif`, `.bmp`, `.ico`) | Centred on the theme's background, scaled down to the width when wider |
+| PDF (`.pdf`) | Every page drawn with [pdf.js](https://mozilla.github.io/pdf.js/) (loaded from jsDelivr), stacked at the page width. Links inside the PDF are not clickable |
+
+HTML, image and PDF files need the viewer; in image mode markterm exits with code `1` and explains why.
+
+### Zoom and width
+
+- `+` / `-` step through 50% to 300%, like a browser. The page is re-rendered at the new zoom, so text stays sharp. The status line shows the zoom when it is not 100%.
+- A page wider than the terminal (common for HTML pages) is zoomed out automatically until it fits, down to 25%. `+` and `-` then work from the fitted level and are kept as chosen.
+- `-s` and `-z` set the starting scale and zoom, as in image mode.
+- Changing the terminal's font size (for example `Cmd` + `+` in Ghostty) is detected and the page re-rendered at the new cell size.
+- While a window is being resized, the viewer waits until the size has been stable for 0.25 s before re-rendering, so dragging does not flicker.
+
+### Animated images
+
+Animated GIFs and WebPs on screen play at up to 10 frames per second. Only the image's cells are captured and drawn over the page, not the whole screen. A frame identical to the last one sent is not sent again, so static images cost no output.
+
+### Saving
+
+- `s` saves the current Markdown page as a self-contained HTML file (local images embedded, Mermaid diagrams drawn), `p` as a PNG of the whole page at the current width and zoom.
+- Files are written next to the Markdown file with the same name (`README.html`, `README.png`), or as `markterm.html` / `markterm.png` in the current directory for stdin. An existing file is never overwritten: `README-2.html`, `README-3.html` and so on are used instead.
+- Saving is for Markdown documents; for HTML, image and PDF files the viewer says so.
+
 ## Options
 
 ```
 -t, --theme <name>             Use a built-in color theme instead of the terminal's colors (see Theme)
     --bg <#hex>                Background color (#rgb or #rrggbb). Overrides the detected or theme value.
     --fg <#hex>                Foreground color (#rgb or #rrggbb). Overrides the detected or theme value.
--w, --width <auto|px>          Viewport width in CSS px. auto estimates it from the terminal (default: auto)
+-w, --width <auto|px>          Image mode: viewport width in CSS px. auto estimates it from the terminal (default: auto)
     --font <family>            Body font, as a CSS font-family list (e.g. "Noto Sans JP")
     --code-font <family>       Font for inline code and code blocks (e.g. "JetBrains Mono")
     --font-size <px>           Body font size in CSS px (default: 16)
     --no-highlight             Disable syntax highlighting of code blocks
-    --no-links                 Do not list the document's links after the image (see Link list)
+    --no-links                 Image mode: do not list the document's links after the image (see Link list)
+-i, --image                    Print one inline image instead of opening the viewer
 -s, --scale <factor>           Device scale factor passed to Chromium (default: 2)
     --mermaid <version>        MermaidJS version loaded from jsDelivr (default: 11.16.0)
--z, --zoom <percent>           Display zoom, 1-100 (default: 100)
+-z, --zoom <percent>           Zoom, 1-100 (default: 100)
 -p, --protocol <name>          Force the image protocol: kitty, iterm2, sixel, file
--o, --output <file.png>        Save the PNG to a file instead of displaying it
--h, --help                     Show help, the detected protocol and terminal columns
+-o, --output <file>            Save to a file instead of displaying: .png for an image, .html for a self-contained page
+-h, --help                     Show help, the detected protocol and the viewer keys
 -v, --version                  Show version
 ```
 
-Positional argument: a Markdown file path. If omitted, Markdown is read from stdin.
+Positional argument: a file path (Markdown, or for the viewer also HTML, image or PDF). If omitted, Markdown is read from stdin.
 
 Protocol precedence: `-p` > `MARKTERM_PROTOCOL` > auto-detection.
 
@@ -151,7 +225,11 @@ Fenced code blocks that name a language (` ```ts `, ` ```python `, ` ```sh `, ..
 - Blocks without a language, with an unknown language, and Mermaid blocks are rendered as before.
 - `--no-highlight` disables highlighting.
 
-## Width and Zoom
+## Image Mode
+
+Image mode prints the document once as an inline image. It is used with `-i`, with `-o`, when output is piped, in tmux/screen, and in terminals without Kitty graphics.
+
+### Width and Zoom
 
 The page is laid out at a viewport width in CSS px and captured at `--scale` times that resolution.
 
@@ -161,12 +239,14 @@ The page is laid out at a viewport width in CSS px and captured at `--scale` tim
 - The rendered image is transmitted with a column count equal to the terminal width, so it always spans the full terminal width for Kitty Graphics and iTerm2. Sixel output is sent at native pixel size.
 - **Tall documents**: terminals limit the size of one inline image. Ghostty rejects Kitty Graphics images taller than 10000 px; iTerm2 rejects images of 10000 px or more and shows at most 255 rows per image. When a render is taller than the limit, markterm cuts it into horizontal bands and transmits them one after another, so the document still appears as one continuous image. Bands are at most 10000 px for Kitty Graphics, and for iTerm2 as tall as 255 rows allow at the current terminal width (about 3300 px for a 640 px render on 80 columns). Cut positions are measured in Chromium and placed in the gap between blocks, or at a table row, list item or text line boundary inside a block that is itself taller than a band; never inside an image or diagram. The terminal may leave up to one blank row at each seam. Width is not split, so keep `--width x --scale` below 10000 px. Sixel output is not split. The temp file and `-o` always receive the whole render.
 - **Large images in iTerm2**: iTerm2 accepts at most 1 MiB per control sequence. Bands whose base64 payload would exceed that are sent with the multipart form (`MultipartFile`, `FilePart`, `FileEnd`) introduced in iTerm2 3.5. Smaller ones keep the classic single `File=` sequence, which works on every iTerm2 version.
+- In image mode iTerm2 always uses its own inline image protocol. Forcing `-p kitty` there draws nothing (iTerm2 3.7.2), although the viewer's Kitty graphics work in the same version.
 
-## Output and Temp Files
+### Output and Temp Files
 
 - The rendered PNG is always written to `$TMPDIR/markterm-<timestamp>.png` (`/tmp/` if `TMPDIR` is unset). markterm never deletes these files.
 - Inline display: the image escape sequence is written to stdout, followed by the link list (see below), whose `[0]` is the temp file. With `--no-links`, the temp file path is written to stderr instead.
-- `-o <file>`: the PNG is written to the given path and `Saved to <file> (<bytes> bytes)` is printed. Nothing is displayed inline, and no link list is printed.
+- `-o <file>.png`: the PNG is written to the given path and `Saved to <file> (<bytes> bytes)` is printed. Nothing is displayed inline, and no link list is printed.
+- `-o <file>.html`: a self-contained HTML page is written instead: the page as the viewer shows it, with local images embedded as data URIs and Mermaid diagrams already drawn as SVG.
 - `file` protocol, or Sixel without `img2sixel`: nothing is displayed; `Saved to: <temp path>` is printed so the image can be opened elsewhere, followed by the link list.
 - When the output stream is a terminal, printed file paths are clickable OSC 8 hyperlinks, like the link list.
 
@@ -189,14 +269,14 @@ Links:
 - Control characters in link text and URLs are removed, so a document cannot inject terminal escape sequences through its links.
 - `--no-links` turns the list off; the temp file path is then printed on its own line as before.
 
-Exit codes: `0` on success, `1` if the input file does not exist or the Markdown is empty.
+Exit codes: `0` on success, `1` if the input file does not exist, the Markdown is empty, or the file can only be shown in the viewer.
 
 ## How It Works
 
 1. **marked** parses Markdown to HTML with a custom extension that turns ` ```mermaid ` fences into `<pre class="mermaid">` blocks, and **Shiki** highlights the other fenced code blocks that name a language
 2. **Playwright** loads the HTML in headless Chromium with MermaidJS from CDN and waits until every Mermaid block has produced an SVG (up to 10 seconds; rendering proceeds after that even if some blocks are still raw)
-3. The `<body>` element is captured as a PNG screenshot. For Kitty Graphics and iTerm2, a render taller than the terminal's limit is also captured as bands cut at measured block boundaries (see [Width and Zoom](#width-and-zoom))
-4. The PNG (or each band in turn) is transmitted to the terminal via the selected image protocol
+3. In the viewer, the visible part of the page is captured and shown as a Kitty graphics image placed in the terminal's cells; the terminal's cell size is queried (`CSI 16 t`, iTerm2's `ReportCellSize`, or `CSI 14 t`) so the page matches the cells exactly. Mouse clicks and motion (SGR mouse reporting) are mapped to page coordinates to find links
+4. In image mode, the `<body>` element is captured as a PNG screenshot. For Kitty Graphics and iTerm2, a render taller than the terminal's limit is also captured as bands cut at measured block boundaries (see [Width and Zoom](#width-and-zoom)), and the PNG (or each band in turn) is transmitted to the terminal via the selected image protocol
 
 ## MermaidJS Support
 
@@ -257,6 +337,8 @@ Exported API:
 |--------|-------------|
 | `markdownToImage(source, options?)` | Render Markdown to a PNG `Uint8Array`. Options: `width`, `fontSize`, `fontFamily`, `codeFontFamily`, `colors`, `mermaidVersion`, `deviceScaleFactor`, `highlight` (default `true`). Font values are used as-is (no generic fallback is appended). The Shiki theme is `colors.codeTheme`, or chosen from the background luminance when unset. |
 | `markdownToImageBands(source, options)` | Like `markdownToImage`, plus `maxBandHeight` (px). Returns `{ png, bands }`: the whole render and its horizontal bands, each at most `maxBandHeight` tall, cut at measured block boundaries. `bands` has one element (`=== png`) when no split is needed. |
+| `markdownToDocument(source, options?)` | The HTML page the viewer shows: it fills the window, resolves relative images and links against `basePath`, and gives headings GitHub-style ids. Options as `markdownToImage` without `width` and `deviceScaleFactor`, plus `basePath`. |
+| `markdownToStandaloneHtml(source, options?)` | The same page as a self-contained HTML string, as written by `-o file.html`: local images embedded as data URIs, Mermaid diagrams drawn as SVG. Uses Chromium. |
 | `measureCutCandidates(source, options?)` | Render and return `{ height, candidates }`: the body height and the cut positions markterm would consider, in CSS px. For debugging. |
 | `chooseCuts(candidates, totalHeight, maxBand)` | The band selection itself: greedy, lowest candidate within reach, hard cut when none. Pure function. |
 | `dispose()` | Close the shared Chromium instance. Call once when done. |
@@ -282,7 +364,7 @@ Exported API:
 | `normalizeHex(value)` | `"#rgb"` / `"#rrggbb"` to lowercase `"#rrggbb"`, or `null` if not a hex color. |
 | `isDark(hex)` | Luminance check used to pick the Mermaid theme. |
 
-Types: `ScreenshotOptions`, `BandOptions`, `ImageBands`, `MeasuredCandidates`, `TemplateOptions`, `ThemeColors`, `TerminalColors`, `TerminalSize`, `Protocol`, `Multiplexer`.
+Types: `ScreenshotOptions`, `BandOptions`, `ImageBands`, `DocumentOptions`, `MeasuredCandidates`, `TemplateOptions`, `ThemeColors`, `TerminalColors`, `TerminalSize`, `Protocol`, `Multiplexer`.
 
 ## License
 

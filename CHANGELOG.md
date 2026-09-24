@@ -2,6 +2,29 @@
 
 All notable changes to markterm are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.4.0 - 2026-09-25
+
+### Added
+
+- Viewer: a full-screen page in the terminal, drawn with Kitty graphics from headless Chromium. It scrolls (keys, mouse wheel), zooms (`+`, `-`, `0`, re-rendered so text stays sharp), follows clicked links with a history (`h` to go back), reloads the file (`r`) and quits with `q`
+- The viewer opens HTML files as they are (own CSS, images and scripts), image files (png, jpg, gif, webp, svg, avif, bmp, ico) on a generated page, and PDF files drawn with pdf.js from jsDelivr. Links to local `.md`, `.html`, image and `.pdf` files open in the viewer; other links open with the system's default handler
+- Hovering a link shows its target in the status line; in Ghostty and Kitty the mouse pointer turns into a hand (OSC 22)
+- Pages wider than the terminal are zoomed out to fit, down to 25%
+- Animated GIFs and WebPs play in the viewer: only their cells are captured and drawn over the page, and unchanged frames are not sent again
+- Saving from the viewer: `s` writes a self-contained HTML file and `p` a PNG of the whole page, next to the Markdown file, never overwriting an existing file
+- `-o file.html` writes a self-contained HTML page: local images embedded as data URIs, Mermaid diagrams drawn as SVG
+- `-i` / `--image` prints one inline image instead of opening the viewer
+- iTerm2 opens the viewer when it answers a Kitty graphics query (verified with 3.7.2). The terminal cell size is read from `CSI 16 t`, iTerm2's `ReportCellSize` or `CSI 14 t`, so frames keep the right aspect ratio
+- The viewer follows the terminal: after a window resize it re-renders once the size has been stable for 0.25 s, and a new font size (e.g. `Cmd` + `+` in Ghostty) is detected and the page re-rendered at the new cell size
+- Library API: `markdownToDocument`, `markdownToStandaloneHtml`, `DocumentOptions` type
+
+### Changed
+
+- **The viewer is the default** when stdout is a terminal with Kitty graphics (Ghostty, Kitty, WezTerm, iTerm2 that supports it) outside tmux/screen. Image mode, the previous behavior, is used with `-i` or `-o`, when output is piped, in tmux/screen, and in other terminals, like `less` pages on a terminal and prints through a pipe
+- HTML, image and PDF files can only be shown in the viewer; in image mode markterm exits with code 1 and explains why
+- Requires Playwright 1.63 or later (was 1.52). An install that kept an older Playwright looked for a Chromium build that is no longer downloaded. Run `npx playwright install chromium` after upgrading if Chromium is missing
+- The npm description and keywords describe the viewer (`viewer`, `preview`, `markdown-viewer`, `html`, `pdf` added)
+
 ## 0.3.0 - 2026-09-23
 
 ### Added
