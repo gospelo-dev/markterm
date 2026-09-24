@@ -9,8 +9,10 @@ describe("buildHtml", () => {
     expect(html).toContain("code, pre { font-family: JetBrains Mono, monospace; }")
   })
 
+  const diagram = '<pre class="mermaid">graph LR\n  A --> B</pre>'
+
   test("uses defaults: 800px, 16px, dark fallback theme, MermaidJS 11.16.0", () => {
-    const html = buildHtml("<p>x</p>")
+    const html = buildHtml(`<p>x</p>${diagram}`)
     expect(html).toContain("width: 800px;")
     expect(html).toContain("font-size: 16px;")
     expect(html).toContain("background: #1e1e2e;")
@@ -19,8 +21,14 @@ describe("buildHtml", () => {
     expect(html).toContain("<p>x</p>")
   })
 
+  test("loads MermaidJS only when the document has a diagram", () => {
+    const html = buildHtml("<p>no diagrams</p>")
+    expect(html).not.toContain("mermaid.min.js")
+    expect(html).not.toContain("mermaid.initialize")
+  })
+
   test("applies width, font size, colors and mermaid version options", () => {
-    const html = buildHtml("<p>y</p>", {
+    const html = buildHtml(`<p>y</p>${diagram}`, {
       width: 1200,
       fontSize: 20,
       fontFamily: "Menlo, monospace",

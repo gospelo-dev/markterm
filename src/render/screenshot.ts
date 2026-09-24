@@ -68,7 +68,9 @@ async function withPage<T>(
   })
 
   try {
-    await page.setContent(html, { waitUntil: "networkidle" })
+    // "load" already waits for images and the Mermaid script; Mermaid's own
+    // rendering is awaited below. "networkidle" added at least 500 ms per page.
+    await page.setContent(html, { waitUntil: "load" })
     await inlineLocalImages(page, opts?.basePath ?? process.cwd())
     await waitForMermaid(page)
     return await fn(page)
@@ -86,7 +88,7 @@ export async function markdownToStandaloneHtml(source: string, opts?: DocumentOp
   const browser = await getBrowser()
   const page = await browser.newPage()
   try {
-    await page.setContent(await markdownToDocument(source, opts), { waitUntil: "networkidle" })
+    await page.setContent(await markdownToDocument(source, opts), { waitUntil: "load" })
     await inlineLocalImages(page, opts?.basePath ?? process.cwd())
     await waitForMermaid(page)
     return await page.content()

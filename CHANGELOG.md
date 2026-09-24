@@ -24,6 +24,7 @@ All notable changes to markterm are documented here. The format follows [Keep a 
 - HTML, image and PDF files can only be shown in the viewer; in image mode markterm exits with code 1 and explains why
 - Requires Playwright 1.63 or later (was 1.52). An install that kept an older Playwright looked for a Chromium build that is no longer downloaded. Run `npx playwright install chromium` after upgrading if Chromium is missing
 - The npm description and keywords describe the viewer (`viewer`, `preview`, `markdown-viewer`, `html`, `pdf` added)
+- Faster rendering: MermaidJS is loaded from the CDN only for documents that contain a diagram, so other documents render without network access, and pages are captured once loaded instead of after the network has been idle for 500 ms. Each render, and each page the viewer opens, is about 0.5 s faster
 
 ## 0.3.0 - 2026-09-23
 

@@ -247,7 +247,7 @@ export class Viewer {
       await this.page.waitForFunction(() => document.body.dataset.pdf, { timeout: 60_000 }).catch(() => {})
     } else {
       const html = await markdownToDocument(doc.source, { ...this.opts.render, basePath: doc.basePath })
-      await this.page.setContent(html, { waitUntil: "networkidle" })
+      await this.page.setContent(html, { waitUntil: "load" })
       await inlineLocalImages(this.page, doc.basePath)
       await waitForMermaid(this.page)
     }
