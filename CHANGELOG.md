@@ -2,6 +2,16 @@
 
 All notable changes to markterm are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Viewer: drag with the left button to select text; releasing copies it to the clipboard with OSC 52 (also over SSH) and the status line shows `Copied N characters`. The selection is made in Chromium with the Selection API, so it follows the page's text across paragraphs, tables and code blocks
+
+### Changed
+
+- Viewer: a link opens when the button is released in the cell where it was pressed, so that a drag starting on a link selects text instead
+
 ## 0.4.0 - 2026-09-25
 
 ### Added

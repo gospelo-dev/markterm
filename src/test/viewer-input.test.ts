@@ -3,6 +3,8 @@ import { InputParser } from "../viewer/input.js"
 import { RESIZE_SETTLE_MS, settle } from "../viewer/index.js"
 import {
   CELL_SIZE_QUERIES,
+  CLIPBOARD_MAX,
+  copyToClipboard,
   deleteImage,
   ENTER,
   LEAVE,
@@ -38,18 +40,31 @@ describe("InputParser", () => {
     )
   })
 
-  test("SGR mouse: left press is a click, wheel is a scroll, motion is a move, others are ignored", () => {
-    expect(parse("\x1b[<0;12;5M\x1b[<0;12;5m\x1b[<64;3;4M\x1b[<65;3;4M\x1b[<35;7;8M\x1b[<2;1;1M\x1b[<32;1;1M")).toEqual([
-      { type: "click", x: 12, y: 5 },
+  test("SGR mouse: left press, drag and release, wheel is a scroll, motion is a move, others are ignored", () => {
+    expect(
+      parse("\x1b[<0;12;5M\x1b[<32;13;5M\x1b[<0;14;6m\x1b[<64;3;4M\x1b[<65;3;4M\x1b[<35;7;8M\x1b[<2;1;1M\x1b[<2;1;1m\x1b[<34;1;1M"),
+    ).toEqual([
+      { type: "press", x: 12, y: 5 },
+      { type: "drag", x: 13, y: 5 },
+      { type: "release", x: 14, y: 6 },
       { type: "wheel", direction: "up", x: 3, y: 4 },
       { type: "wheel", direction: "down", x: 3, y: 4 },
       { type: "move", x: 7, y: 8 },
     ])
   })
 
+  test("SGR mouse: Shift, Meta and Ctrl do not change the left button", () => {
+    expect(parse("\x1b[<16;1;2M\x1b[<48;3;2M\x1b[<4;3;2m\x1b[<40;3;2M")).toEqual([
+      { type: "press", x: 1, y: 2 },
+      { type: "drag", x: 3, y: 2 },
+      { type: "release", x: 3, y: 2 },
+      { type: "drag", x: 3, y: 2 },
+    ])
+  })
+
   test("a sequence split across chunks is joined", () => {
     expect(parse("\x1b[<0;1", "0;7M", "\x1b", "[B")).toEqual([
-      { type: "click", x: 10, y: 7 },
+      { type: "press", x: 10, y: 7 },
       { type: "key", key: "down" },
     ])
   })
@@ -143,6 +158,14 @@ describe("screen", () => {
     expect(ENTER).toContain("\x1b[?1003h")
     expect(LEAVE).toContain("\x1b]22;default\x1b\\")
     expect(LEAVE).toContain("\x1b[?1003l")
+  })
+
+  test("copyToClipboard sends UTF-8 text as base64 with OSC 52, up to a limit", () => {
+    expect(copyToClipboard("abc")).toBe("\x1b]52;c;YWJj\x1b\\")
+    expect(copyToClipboard("あ")).toBe(`\x1b]52;c;${Buffer.from("あ").toString("base64")}\x1b\\`)
+    // 3 bytes become 4 base64 characters
+    expect(copyToClipboard("a".repeat((CLIPBOARD_MAX / 4) * 3))).not.toBeNull()
+    expect(copyToClipboard("a".repeat((CLIPBOARD_MAX / 4) * 3 + 1))).toBeNull()
   })
 
   test("deleteImage frees one image by id", () => {
