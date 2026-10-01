@@ -125,6 +125,7 @@ The viewer renders the document in headless Chromium and shows the part that fit
 ### Copying text
 
 - Drag with the left button to select text. When the button is released, the selection is copied to the clipboard and the status line shows `Copied N characters`. A drag that starts on a link selects instead of following it.
+- Dragging onto the status line or the first row scrolls the page, so the selection can go past the screen.
 - The selection stays highlighted until the next click, and is dropped when another document opens or the page is zoomed or resized.
 - The text is sent to the terminal with OSC 52, so copying also works over SSH. In iTerm2, turn on *Settings > General > Selection > Applications in terminal may access clipboard*.
 - Text in images and PDF pages cannot be selected.
