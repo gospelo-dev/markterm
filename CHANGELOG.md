@@ -7,6 +7,7 @@ All notable changes to markterm are documented here. The format follows [Keep a 
 ### Added
 
 - Viewer: drag with the left button to select text; releasing copies it to the clipboard with OSC 52 (also over SSH) and the status line shows `Copied N characters`. The selection is made in Chromium with the Selection API, so it follows the page's text across paragraphs, tables and code blocks
+- Viewer: dragging onto the status line or the first row scrolls the page, so a selection can extend past the screen
 
 ### Changed
 
