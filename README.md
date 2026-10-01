@@ -108,6 +108,7 @@ The viewer renders the document in headless Chromium and shows the part that fit
 | `Space` / `b`, `PgDn` / `PgUp` | Page down / up |
 | `g` / `G`, `Home` / `End` | Top / bottom |
 | Click | Follow a link |
+| Drag | Select text and copy it to the clipboard |
 | `h`, `Left`, `Backspace` | Back |
 | `+` (or `=`), `-`, `0` | Zoom in, zoom out, reset |
 | `r` | Reload the file from disk |
@@ -120,6 +121,13 @@ The viewer renders the document in headless Chromium and shows the part that fit
 - In-page links (`#section`) scroll the page. Headings get GitHub-style ids, including non-ASCII ones.
 - Other links (`https://`, `mailto:`, other files) open with the system's default handler.
 - Hovering a link shows its target in the status line. In Ghostty and Kitty the mouse pointer also turns into a hand (OSC 22).
+
+### Copying text
+
+- Drag with the left button to select text. When the button is released, the selection is copied to the clipboard and the status line shows `Copied N characters`. A drag that starts on a link selects instead of following it.
+- The selection stays highlighted until the next click, and is dropped when another document opens or the page is zoomed or resized.
+- The text is sent to the terminal with OSC 52, so copying also works over SSH. In iTerm2, turn on *Settings > General > Selection > Applications in terminal may access clipboard*.
+- Text in images and PDF pages cannot be selected.
 
 ### File types
 
