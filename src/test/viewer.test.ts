@@ -274,6 +274,156 @@ describe("Viewer", () => {
     await viewer.setZoom(1)
   }, 30_000)
 
+  describe("text selection", () => {
+    const S = join(dir, "select.md")
+    const pageOf = () => (viewer as unknown as { page: import("playwright").Page }).page
+    const selection = () => pageOf().evaluate(() => getSelection()?.toString() ?? "")
+    /** The text sent to the clipboard with OSC 52, or null. */
+    const copied = () => {
+      const m = /\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\/.exec(output.join(""))
+      return m ? Buffer.from(m[1], "base64").toString("utf-8") : null
+    }
+    /** The cell over the left or right end of the text in a one-line element. */
+    async function edgeOf(selector: string, side: "left" | "right") {
+      await viewer.idle()
+      const r = await pageOf().evaluate(([sel, side]) => {
+        const range = document.createRange()
+        range.selectNodeContents(document.querySelector(sel)!)
+        // One rectangle per text run (a link is its own run)
+        const rects = range.getClientRects()
+        const rect = side === "left" ? rects[0] : rects[rects.length - 1]
+        return { left: rect.left, right: rect.right, top: rect.top, height: rect.height }
+      }, [selector, side] as const)
+      const x = side === "left" ? r.left + 1 : r.right - 1
+      return { x: Math.floor(x / size.cell.width) + 1, y: Math.floor((r.top + r.height / 2) / size.cell.height) + 1 }
+    }
+
+    beforeAll(() => {
+      writeFileSync(
+        S,
+        `# Select\n\n日本語の段落です。English words here.\n\n[a link](https://example.com/sel) after the link\n\n${filler}\n`,
+      )
+    })
+
+    test("dragging selects the text, and releasing copies it with OSC 52", async () => {
+      await open(S)
+      const from = await edgeOf("p", "left")
+      const to = await edgeOf("p", "right")
+      output.length = 0
+      await viewer.handle({ type: "press", ...from })
+      await viewer.handle({ type: "drag", x: from.x + 3, y: from.y })
+      await viewer.handle({ type: "drag", ...to })
+      await viewer.handle({ type: "release", ...to })
+      const text = await selection()
+      expect(text).toContain("段落です。English")
+      expect(copied()).toBe(text)
+      // Counted in characters, not UTF-16 units or bytes
+      expect(output.join("")).toContain(`Copied ${[...text].length} characters`)
+      // The selection stays on screen after the release
+      expect(output.join("")).toContain("a=T,f=100")
+      expect(await selection()).toBe(text)
+    }, 30_000)
+
+    test("a drag that starts on a link selects instead of opening it", async () => {
+      await open(S)
+      const before = opened.length
+      const from = await edgeOf("a", "left")
+      const to = await edgeOf("p:nth-of-type(2)", "right")
+      output.length = 0
+      await viewer.handle({ type: "press", ...from })
+      await viewer.handle({ type: "drag", ...to })
+      await viewer.handle({ type: "release", ...to })
+      expect(opened.length).toBe(before)
+      expect(viewer.currentPath).toBe(S)
+      expect(copied()).toContain("after the link")
+    }, 30_000)
+
+    test("press and release in the same cell is a click: links open, the selection is cleared", async () => {
+      await open(S)
+      const p = await edgeOf("p", "left")
+      await viewer.handle({ type: "press", ...p })
+      await viewer.handle({ type: "drag", x: p.x + 5, y: p.y })
+      await viewer.handle({ type: "release", x: p.x + 5, y: p.y })
+      expect(await selection()).not.toBe("")
+
+      const link = await cellOf("a")
+      output.length = 0
+      await viewer.handle({ type: "press", ...link })
+      expect(await selection()).toBe("")
+      // Clearing the selection draws a frame without it
+      expect(output.join("")).toContain("a=T,f=100")
+      await viewer.handle({ type: "release", ...link })
+      expect(opened.slice(-1)).toEqual(["https://example.com/sel"])
+      expect(copied()).toBeNull()
+    }, 30_000)
+
+    test("dragging over the status line selects up to the last row", async () => {
+      await open(S)
+      const from = await edgeOf("p", "left")
+      await viewer.handle({ type: "press", ...from })
+      await viewer.handle({ type: "drag", x: 40, y: size.rows })
+      await viewer.handle({ type: "drag", x: 200, y: 99 })
+      await viewer.handle({ type: "release", x: 200, y: 99 })
+      const text = await selection()
+      expect(text).toContain("Paragraph 0")
+      expect(copied()).toBe(text)
+    }, 30_000)
+
+    test("drag and release without a press, or a press on the status line, do nothing", async () => {
+      await open(S)
+      output.length = 0
+      await viewer.handle({ type: "drag", x: 10, y: 5 })
+      await viewer.handle({ type: "release", x: 10, y: 5 })
+      await viewer.handle({ type: "press", x: 10, y: size.rows })
+      await viewer.handle({ type: "drag", x: 10, y: 5 })
+      await viewer.handle({ type: "release", x: 10, y: 5 })
+      await viewer.idle()
+      expect(output.join("")).toBe("")
+      expect(await selection()).toBe("")
+    }, 30_000)
+
+    test("a burst of drag events collapses into a few frames", async () => {
+      await open(S)
+      const from = await edgeOf("p", "left")
+      output.length = 0
+      await viewer.handle({ type: "press", ...from })
+      for (let i = 0; i < 30; i++) await viewer.handle({ type: "drag", x: 5 + (i % 60), y: 3 + (i % 15) })
+      await viewer.handle({ type: "release", x: 60, y: 10 })
+      const frames = [...output.join("").matchAll(/a=T,f=100/g)].length
+      expect(frames).toBeLessThan(10)
+      expect(copied()).toBe(await selection())
+    }, 30_000)
+
+    test("zooming and opening another document drop the selection", async () => {
+      await open(S)
+      const from = await edgeOf("p", "left")
+      await viewer.handle({ type: "press", ...from })
+      await viewer.handle({ type: "drag", x: 40, y: 10 })
+      await viewer.handle({ type: "release", x: 40, y: 10 })
+      expect(await selection()).not.toBe("")
+      await viewer.handle({ type: "key", key: "+" })
+      expect(await selection()).toBe("")
+      // A drag in progress does not survive the new page either
+      await viewer.handle({ type: "press", x: 10, y: 5 })
+      await viewer.handle({ type: "key", key: "0" })
+      output.length = 0
+      await viewer.handle({ type: "drag", x: 40, y: 10 })
+      await viewer.handle({ type: "release", x: 40, y: 10 })
+      expect(copied()).toBeNull()
+    }, 30_000)
+
+    test("an image document has no text to copy", async () => {
+      const P = join(dir, "select.png")
+      require("node:fs").copyFileSync(join(import.meta.dir, "fixtures", "red-1x1.png"), P)
+      await viewer.open({ source: "", path: P, basePath: dir, kind: "image" })
+      output.length = 0
+      await viewer.handle({ type: "press", x: 5, y: 3 })
+      await viewer.handle({ type: "drag", x: 60, y: 15 })
+      await viewer.handle({ type: "release", x: 60, y: 15 })
+      expect(copied()).toBeNull()
+    }, 30_000)
+  })
+
   describe("animated GIFs", () => {
     const GIF_1PX = "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=="
     const G = join(dir, "gif.md")

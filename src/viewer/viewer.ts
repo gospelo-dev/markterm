@@ -8,7 +8,7 @@ import { buildHtml } from "../render/template.js"
 import { pdfPage } from "./pdf.js"
 import { getBrowser, inlineLocalImages, waitForMermaid } from "../render/screenshot.js"
 import type { InputEvent } from "./input.js"
-import { deleteImage, placeImage, pointerShape, statusLine, type CellSize } from "./screen.js"
+import { copyToClipboard, deleteImage, placeImage, pointerShape, statusLine, type CellSize } from "./screen.js"
 
 const MARKDOWN_EXT = /\.(md|markdown)$/i
 
@@ -23,6 +23,12 @@ export const ANIMATION_INTERVAL_MS = 100
 
 /** Image ids for GIF overlays: two per GIF, above the page frame's ids 1 and 2. */
 const OVERLAY_ID_BASE = 100
+
+/**
+ * Where the page keeps the start of a text selection. DOM nodes cannot be
+ * returned to Node.js, so the anchor stays in the page between drag events.
+ */
+const SELECTION_ANCHOR = "__marktermSelectionAnchor"
 
 /**
  * Where the viewer saves a document: next to its file with the new extension
@@ -130,6 +136,11 @@ export class Viewer {
   private hoverTarget: { x: number; y: number } | null = null
   private hoverHref: string | null = null
   private hovering: Promise<void> | null = null
+  /** The left button is down: where it went down, and whether it has dragged away. */
+  private press: { x: number; y: number; dragging: boolean } | null = null
+  /** Latest drag position not yet applied to the selection (only the latest is applied, like hover). */
+  private dragTarget: { x: number; y: number } | null = null
+  private selecting: Promise<void> | null = null
   /** GIFs on screen, the overlay image shown for each, and the animation loop. */
   private animated: { col: number; row: number; cols: number; rows: number; clip: { x: number; y: number; width: number; height: number } }[] = []
   private overlayIds: number[] = []
@@ -229,6 +240,9 @@ export class Viewer {
     this.stopAnimation()
     this.animated = []
     await this.animating
+    // A selection belongs to the old document
+    this.press = null
+    this.dragTarget = null
     if (doc.kind === "html" && doc.path) {
       // Open the file itself so its relative CSS, images and scripts load
       // as in a browser. Pages that keep the network busy are shown once
@@ -265,6 +279,9 @@ export class Viewer {
     this.message = ""
     if (event.type === "wheel") return this.scrollBy((event.direction === "down" ? 3 : -3) * this.rowHeight)
     if (event.type === "click") return this.click(event.x, event.y)
+    if (event.type === "press") return this.pressAt(event.x, event.y)
+    if (event.type === "drag") return this.drag(event.x, event.y)
+    if (event.type === "release") return this.release(event.x, event.y)
 
     const line = 2 * this.rowHeight
     const pageStep = this.contentRows * this.rowHeight - line
@@ -353,6 +370,10 @@ export class Viewer {
     this.stopAnimation()
     this.animated = []
     await this.animating
+    // The selection is lost with the old page
+    this.press = null
+    this.dragTarget = null
+    await this.selecting
     const old = this.page
     this.page = await newPage(this.size, this.effectiveScale)
     await old.close()
@@ -399,6 +420,8 @@ export class Viewer {
 
   /** Resolves once every requested frame has been drawn. */
   async idle(): Promise<void> {
+    // Selecting requests a frame, so it comes first
+    await this.selecting
     await this.drawing
     await this.hovering
   }
@@ -423,16 +446,99 @@ export class Viewer {
     if (link) await this.follow(link)
   }
 
+  /** The centre of a terminal cell (1-based), in CSS pixels of the viewport. */
+  private cellToPage(x: number, y: number): [number, number] {
+    return [((x - 1 + 0.5) * this.size.cell.width) / this.effectiveScale, (y - 1 + 0.5) * this.rowHeight]
+  }
+
+  /**
+   * The left button went down: remember where, and clear any selection. Links
+   * open on release, so that a drag starting on a link selects instead.
+   */
+  private async pressAt(x: number, y: number): Promise<void> {
+    this.press = null
+    if (y > this.contentRows) return
+    // Anchor the selection in the page as it is on screen, not mid-scroll
+    await this.idle()
+    this.press = { x, y, dragging: false }
+    const cleared = await this.page.evaluate(
+      ([key, [px, py]]) => {
+        const caret = document.caretPositionFromPoint(px, py)
+        ;(window as unknown as Record<string, unknown>)[key] = caret ? { node: caret.offsetNode, offset: caret.offset } : null
+        const selection = getSelection()
+        const had = !!selection && !selection.isCollapsed
+        selection?.removeAllRanges()
+        return had
+      },
+      [SELECTION_ANCHOR, this.cellToPage(x, y)] as const,
+    )
+    if (cleared) await this.redraw()
+  }
+
+  /**
+   * The pointer moved with the button held: extend the selection from the
+   * anchor to the pointer's cell. Drag events arrive far faster than frames;
+   * only the latest position is applied.
+   */
+  private drag(x: number, y: number): void {
+    const press = this.press
+    if (!press) return
+    // Over the status line (or past the edges), select up to the last row
+    x = Math.max(1, Math.min(x, this.size.cols))
+    y = Math.max(1, Math.min(y, this.contentRows))
+    if (!press.dragging && x === press.x && y === press.y) return
+    press.dragging = true
+    this.dragTarget = { x, y }
+    this.selecting ??= (async () => {
+      while (this.dragTarget) {
+        const target = this.dragTarget
+        this.dragTarget = null
+        const selected = await this.page
+          .evaluate(
+            ([key, [px, py]]) => {
+              const anchor = (window as unknown as Record<string, { node: Node; offset: number } | null>)[key]
+              const caret = document.caretPositionFromPoint(px, py)
+              if (!anchor || !caret) return false
+              getSelection()?.setBaseAndExtent(anchor.node, anchor.offset, caret.offsetNode, caret.offset)
+              return true
+            },
+            [SELECTION_ANCHOR, this.cellToPage(target.x, target.y)] as const,
+          )
+          .catch(() => false)
+        if (selected) void this.redraw()
+      }
+      this.selecting = null
+    })()
+  }
+
+  /**
+   * The button was released: in the cell where it went down, this is a click;
+   * after a drag, copy the selected text to the clipboard.
+   */
+  private async release(x: number, y: number): Promise<void> {
+    if (!this.press) return
+    // The last drag event may not have reached the release position
+    this.drag(x, y)
+    const press = this.press
+    this.press = null
+    if (!press.dragging) return this.click(x, y)
+    await this.selecting
+    const text = await this.page.evaluate(() => getSelection()?.toString() ?? "")
+    if (text) {
+      const copy = copyToClipboard(text)
+      if (copy) this.opts.output.write(copy)
+      this.message = copy ? `Copied ${[...text].length} characters` : "Selection too large to copy"
+    }
+    await this.redraw()
+  }
+
   /** The link under a terminal cell (1-based), or null. */
   private async linkAt(x: number, y: number): Promise<Link | null> {
     if (y > this.contentRows) return null
-    // Centre of the cell, in CSS pixels of the viewport
-    const cx = ((x - 1 + 0.5) * this.size.cell.width) / this.effectiveScale
-    const cy = (y - 1 + 0.5) * this.rowHeight
     return this.page.evaluate(([px, py]) => {
       const a = document.elementFromPoint(px, py)?.closest("a")
       return a ? { raw: a.getAttribute("href") ?? "", href: a.href } : null
-    }, [cx, cy])
+    }, this.cellToPage(x, y))
   }
 
   /**
@@ -687,7 +793,7 @@ export class Viewer {
     // A message or a hovered link's target takes the room of the key help
     return this.message || this.hoverHref
       ? `${zoom}${pos}`
-      : `${zoom}${pos}  [j/k] scroll  [+/-] zoom  [click] link  [q] quit`
+      : `${zoom}${pos}  [j/k] scroll  [+/-] zoom  [click] link  [drag] copy  [q] quit`
   }
 }
 

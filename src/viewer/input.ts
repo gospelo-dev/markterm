@@ -15,8 +15,18 @@ export type KeyName =
 
 export type InputEvent =
   | { type: "key"; key: KeyName | string }
-  /** x and y are 1-based terminal cells, as reported by SGR mouse mode. */
+  /**
+   * x and y are 1-based terminal cells, as reported by SGR mouse mode. The
+   * parser reports press and release; the viewer treats both in the same cell
+   * as a click.
+   */
   | { type: "click"; x: number; y: number }
+  /** The left button went down. */
+  | { type: "press"; x: number; y: number }
+  /** The pointer moved with the left button held. */
+  | { type: "drag"; x: number; y: number }
+  /** The left button was released. */
+  | { type: "release"; x: number; y: number }
   | { type: "wheel"; direction: "up" | "down"; x: number; y: number }
   /** The pointer moved with no button held. */
   | { type: "move"; x: number; y: number }
@@ -38,6 +48,8 @@ const CSI_KEYS: Record<string, KeyName> = {
 
 // SGR mouse report: ESC [ < button ; x ; y (M = press, m = release)
 const SGR_MOUSE = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])/
+// Modifier bits in the button number: Shift, Meta, Ctrl
+const MODIFIERS = 4 | 8 | 16
 // Other CSI / SS3 sequences: ESC [ params final, ESC O final
 const CSI = /^\x1b\[([0-9;]*)([A-Za-z~])/
 const SS3 = /^\x1bO([A-Za-z])/
@@ -73,15 +85,19 @@ export class InputParser {
         const x = Number(mouse[2])
         const y = Number(mouse[3])
         const press = mouse[4] === "M"
+        const left = button & ~MODIFIERS
         if (button === 64 || button === 65) {
           events.push({ type: "wheel", direction: button === 64 ? "up" : "down", x, y })
-        } else if (button === 0 && press) {
-          events.push({ type: "click", x, y })
+        } else if (left === 0) {
+          events.push({ type: press ? "press" : "release", x, y })
+        } else if (left === 32 && press) {
+          // 32 (motion) + 0 (left button)
+          events.push({ type: "drag", x, y })
         } else if (button === 35) {
           // 32 (motion) + 3 (no button)
           events.push({ type: "move", x, y })
         }
-        // Other buttons, releases and drags are ignored
+        // Other buttons and their releases are ignored
         continue
       }
 

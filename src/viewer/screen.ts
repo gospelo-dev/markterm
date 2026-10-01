@@ -45,6 +45,19 @@ export function deleteImage(id: number): string {
   return `\x1b_Ga=d,d=I,i=${id},q=2\x1b\\`
 }
 
+/** Largest selection sent with OSC 52, in bytes of base64. */
+export const CLIPBOARD_MAX = 1024 * 1024
+
+/**
+ * Put text on the system clipboard (OSC 52). Works over SSH too, as the
+ * terminal does the copying. Null if the text is too large to send.
+ */
+export function copyToClipboard(text: string): string | null {
+  const b64 = Buffer.from(text, "utf-8").toString("base64")
+  if (b64.length > CLIPBOARD_MAX) return null
+  return `\x1b]52;c;${b64}\x1b\\`
+}
+
 /** Draw a one-line status bar on the given row, in reverse video, fitted to cols. */
 export function statusLine(row: number, cols: number, left: string, right: string): string {
   const width = Math.max(0, cols - 2)
