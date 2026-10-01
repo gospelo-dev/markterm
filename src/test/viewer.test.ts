@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { dispose } from "../render/screenshot.js"
-import { Viewer, viewportFor, type ViewerSize } from "../viewer/viewer.js"
+import { AUTOSCROLL_INTERVAL_MS, Viewer, viewportFor, type ViewerSize } from "../viewer/viewer.js"
 
 const dir = mkdtempSync(join(tmpdir(), "markterm-viewer-"))
 const filler = Array.from({ length: 40 }, (_, i) => `Paragraph ${i} with some words.`).join("\n\n")
@@ -434,6 +434,115 @@ describe("Viewer", () => {
       await viewer.handle({ type: "release", x: 60, y: 15 })
       expect(copied()).toBeNull()
     }, 30_000)
+
+    describe("autoscroll at the edges", () => {
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+      /** Wait for a condition that the autoscroll timer makes true. */
+      async function until(check: () => boolean, what: string) {
+        const end = Date.now() + 10_000
+        while (!check()) {
+          if (Date.now() > end) throw new Error(`timed out waiting for ${what}`)
+          await wait(20)
+        }
+      }
+      /** The scroll position stays where it is for several steps. */
+      async function expectStill() {
+        await viewer.idle()
+        const top = viewer.scrollTop
+        await wait(AUTOSCROLL_INTERVAL_MS * 5)
+        await viewer.idle()
+        expect(viewer.scrollTop).toBe(top)
+      }
+      const bottom = async () => {
+        await viewer.handle({ type: "key", key: "G" })
+        await viewer.idle()
+        const max = viewer.scrollTop
+        await viewer.handle({ type: "key", key: "g" })
+        await viewer.idle()
+        return max
+      }
+
+      test("a drag held on the status line scrolls down, and the selection follows past the first screen", async () => {
+        await open(S)
+        // The first paragraph below the first screen
+        const below = await pageOf().evaluate(
+          () => Array.from(document.querySelectorAll("p")).find((p) => p.getBoundingClientRect().top > innerHeight)!.textContent!,
+        )
+        const from = await edgeOf("p", "start")
+        await viewer.handle({ type: "press", ...from })
+        await viewer.handle({ type: "drag", x: 40, y: size.rows })
+        await until(() => viewer.scrollTop > 200, "scrolling down")
+        // The end of the selection moves with the last row, onto text that was off screen
+        await viewer.idle()
+        expect(await selection()).toContain(below)
+        // Back inside the page: the scrolling stops, and the selection ends at that row
+        await viewer.handle({ type: "drag", x: 40, y: 10 })
+        await expectStill()
+        output.length = 0
+        await viewer.handle({ type: "release", x: 40, y: 10 })
+        expect(copied()).toBe(await selection())
+      }, 30_000)
+
+      test("a drag held on the first row scrolls back up", async () => {
+        await open(S)
+        const max = await bottom()
+        await viewer.handle({ type: "key", key: "G" })
+        await viewer.idle()
+        await viewer.handle({ type: "press", x: 40, y: 10 })
+        await viewer.handle({ type: "drag", x: 40, y: 1 })
+        await until(() => viewer.scrollTop < max - 200, "scrolling up")
+        output.length = 0
+        await viewer.handle({ type: "release", x: 40, y: 1 })
+        expect(copied()).toBe(await selection())
+        expect(copied()!.length).toBeGreaterThan(0)
+      }, 30_000)
+
+      test("further below the window scrolls faster, and the scrolling stops at the end", async () => {
+        await open(S)
+        const max = await bottom()
+        await viewer.handle({ type: "press", x: 40, y: 3 })
+        await viewer.handle({ type: "drag", x: 40, y: size.rows + 10 })
+        // Ten rows below the window: five rows per step (the most), not one
+        await until(() => viewer.scrollTop > 0, "scrolling down")
+        expect(viewer.scrollTop).toBeGreaterThanOrEqual(5 * size.cell.height)
+        await until(() => viewer.scrollTop === max, "the end of the document")
+        // Nothing more is drawn once the end is reached
+        await viewer.idle()
+        output.length = 0
+        await wait(AUTOSCROLL_INTERVAL_MS * 5)
+        expect(output.join("")).toBe("")
+        await viewer.handle({ type: "release", x: 40, y: size.rows + 10 })
+        expect(copied()).toContain("Paragraph 39")
+      }, 30_000)
+
+      test("releasing stops the scrolling", async () => {
+        await open(S)
+        await viewer.handle({ type: "press", x: 40, y: 3 })
+        await viewer.handle({ type: "drag", x: 40, y: size.rows })
+        await until(() => viewer.scrollTop > 0, "scrolling down")
+        await viewer.handle({ type: "release", x: 40, y: size.rows })
+        await expectStill()
+      }, 30_000)
+
+      test("the first row at the top of the document does not scroll", async () => {
+        await open(S)
+        await viewer.handle({ type: "press", x: 40, y: 10 })
+        await viewer.handle({ type: "drag", x: 40, y: 1 })
+        await expectStill()
+        expect(viewer.scrollTop).toBe(0)
+        await viewer.handle({ type: "release", x: 40, y: 1 })
+      }, 30_000)
+
+      test("zooming stops the scrolling", async () => {
+        await open(S)
+        await viewer.handle({ type: "press", x: 40, y: 3 })
+        await viewer.handle({ type: "drag", x: 40, y: size.rows })
+        await until(() => viewer.scrollTop > 0, "scrolling down")
+        await viewer.handle({ type: "key", key: "+" })
+        await expectStill()
+        await viewer.handle({ type: "key", key: "0" })
+      }, 30_000)
+    })
   })
 
   describe("animated GIFs", () => {

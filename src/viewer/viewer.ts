@@ -30,6 +30,12 @@ const OVERLAY_ID_BASE = 100
  */
 const SELECTION_ANCHOR = "__marktermSelectionAnchor"
 
+/** How often the page scrolls while a drag is held at the top or bottom edge. */
+export const AUTOSCROLL_INTERVAL_MS = 50
+
+/** The most rows one autoscroll step moves, when the pointer is far below the window. */
+const AUTOSCROLL_MAX_ROWS = 5
+
 /**
  * Where the viewer saves a document: next to its file with the new extension
  * (docs/a.md -> docs/a.html), or markterm.<ext> in the current directory for
@@ -141,6 +147,9 @@ export class Viewer {
   /** Latest drag position not yet applied to the selection (only the latest is applied, like hover). */
   private dragTarget: { x: number; y: number } | null = null
   private selecting: Promise<void> | null = null
+  /** A drag held at the top or bottom edge: which way to scroll, and how many rows per step. */
+  private autoScroll: { direction: -1 | 1; x: number; rows: number } | null = null
+  private autoScrollTimer: ReturnType<typeof setInterval> | null = null
   /** GIFs on screen, the overlay image shown for each, and the animation loop. */
   private animated: { col: number; row: number; cols: number; rows: number; clip: { x: number; y: number; width: number; height: number } }[] = []
   private overlayIds: number[] = []
@@ -241,6 +250,7 @@ export class Viewer {
     this.animated = []
     await this.animating
     // A selection belongs to the old document
+    this.stopAutoScroll()
     this.press = null
     this.dragTarget = null
     if (doc.kind === "html" && doc.path) {
@@ -371,6 +381,7 @@ export class Viewer {
     this.animated = []
     await this.animating
     // The selection is lost with the old page
+    this.stopAutoScroll()
     this.press = null
     this.dragTarget = null
     await this.selecting
@@ -413,6 +424,7 @@ export class Viewer {
   }
 
   async close(): Promise<void> {
+    this.stopAutoScroll()
     this.stopAnimation()
     await this.animating
     await this.page.close()
@@ -456,6 +468,7 @@ export class Viewer {
    * open on release, so that a drag starting on a link selects instead.
    */
   private async pressAt(x: number, y: number): Promise<void> {
+    this.stopAutoScroll()
     this.press = null
     if (y > this.contentRows) return
     // Anchor the selection in the page as it is on screen, not mid-scroll
@@ -478,16 +491,29 @@ export class Viewer {
   /**
    * The pointer moved with the button held: extend the selection from the
    * anchor to the pointer's cell. Drag events arrive far faster than frames;
-   * only the latest position is applied.
+   * only the latest position is applied. Held on the status line (or below
+   * the window) or on the first row, the page scrolls on by itself.
    */
   private drag(x: number, y: number): void {
     const press = this.press
     if (!press) return
+    // The edge is judged before clamping: the terminal may report rows below the window
+    const edge: { direction: -1 | 1; rows: number } | null =
+      y >= this.size.rows ? { direction: 1, rows: Math.min(AUTOSCROLL_MAX_ROWS, 1 + y - this.size.rows) }
+      : y <= 1 ? { direction: -1, rows: 1 }
+      : null
     // Over the status line (or past the edges), select up to the last row
     x = Math.max(1, Math.min(x, this.size.cols))
     y = Math.max(1, Math.min(y, this.contentRows))
     if (!press.dragging && x === press.x && y === press.y) return
     press.dragging = true
+    if (edge) this.startAutoScroll({ ...edge, x })
+    else this.stopAutoScroll()
+    this.selectTo(x, y)
+  }
+
+  /** Move the end of the selection to a cell; only the latest cell is applied. */
+  private selectTo(x: number, y: number): void {
     this.dragTarget = { x, y }
     this.selecting ??= (async () => {
       while (this.dragTarget) {
@@ -495,20 +521,50 @@ export class Viewer {
         this.dragTarget = null
         const selected = await this.page
           .evaluate(
-            ([key, [px, py]]) => {
+            ([key, [px, py], scrollY]) => {
+              // Find the caret where the page is scrolled to, without waiting
+              // for the next frame (drawFrame scrolls to the same position)
+              if (window.scrollY !== scrollY) window.scrollTo(0, scrollY)
               const anchor = (window as unknown as Record<string, { node: Node; offset: number } | null>)[key]
               const caret = document.caretPositionFromPoint(px, py)
               if (!anchor || !caret) return false
               getSelection()?.setBaseAndExtent(anchor.node, anchor.offset, caret.offsetNode, caret.offset)
               return true
             },
-            [SELECTION_ANCHOR, this.cellToPage(target.x, target.y)] as const,
+            [SELECTION_ANCHOR, this.cellToPage(target.x, target.y), this.scrollY] as const,
           )
           .catch(() => false)
         if (selected) void this.redraw()
       }
       this.selecting = null
     })()
+  }
+
+  private startAutoScroll(scroll: { direction: -1 | 1; x: number; rows: number }): void {
+    this.autoScroll = scroll
+    if (this.autoScrollTimer) return
+    this.autoScrollTimer = setInterval(() => this.autoScrollStep(), AUTOSCROLL_INTERVAL_MS)
+    this.autoScrollTimer.unref?.()
+  }
+
+  private stopAutoScroll(): void {
+    if (this.autoScrollTimer) clearInterval(this.autoScrollTimer)
+    this.autoScrollTimer = null
+    this.autoScroll = null
+  }
+
+  /**
+   * One step of scrolling while a drag is held at an edge: scroll, and extend
+   * the selection to the edge row, which now shows new text. Stops at the top
+   * or bottom of the document; the next drag event starts it again.
+   */
+  private autoScrollStep(): void {
+    const scroll = this.autoScroll
+    if (!this.press || !scroll) return this.stopAutoScroll()
+    const target = Math.max(0, Math.min(this.scrollY + scroll.direction * scroll.rows * this.rowHeight, this.maxScroll))
+    if (target === this.scrollY) return this.stopAutoScroll()
+    this.scrollTo(target)
+    this.selectTo(scroll.x, scroll.direction === 1 ? this.contentRows : 1)
   }
 
   /**
@@ -519,6 +575,7 @@ export class Viewer {
     if (!this.press) return
     // The last drag event may not have reached the release position
     this.drag(x, y)
+    this.stopAutoScroll()
     const press = this.press
     this.press = null
     if (!press.dragging) return this.click(x, y)
