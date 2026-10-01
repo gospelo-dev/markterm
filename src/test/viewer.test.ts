@@ -605,8 +605,16 @@ describe("Viewer", () => {
     }, 30_000)
 
     test("a static image is sent once, then nothing while its frame does not change", async () => {
+      // Not the overlays of the previous test
+      output.length = 0
       await open(S)
-      await wait(250)
+      // The first capture is always sent; wait for it instead of assuming how
+      // long it takes (a slow CI runner can send it after a fixed wait)
+      const end = Date.now() + 10_000
+      while (overlays(output.join("")).length === 0) {
+        if (Date.now() > end) throw new Error("no overlay was sent")
+        await wait(20)
+      }
       output.length = 0
       await wait(400)
       expect(overlays(output.join("")).length).toBe(0)
