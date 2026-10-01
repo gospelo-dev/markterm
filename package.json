@@ -1,6 +1,6 @@
 {
   "name": "markterm",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "View Markdown + MermaidJS in the terminal: a full-screen viewer with clickable links that also opens HTML, images and PDFs, or inline images. For Ghostty, Kitty, WezTerm, iTerm2 and other terminals.",
   "keywords": [
     "markdown",
