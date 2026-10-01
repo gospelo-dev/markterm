@@ -283,19 +283,27 @@ describe("Viewer", () => {
       const m = /\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\/.exec(output.join(""))
       return m ? Buffer.from(m[1], "base64").toString("utf-8") : null
     }
-    /** The cell over the left or right end of the text in a one-line element. */
-    async function edgeOf(selector: string, side: "left" | "right") {
+    /**
+     * A cell on the line of a one-line element: over the start of its text, or
+     * in the blank space after its end. The viewer hit-tests the centre of a
+     * cell, which can fall anywhere inside a glyph depending on the fonts, so
+     * the end is taken past the text, where Chromium puts the caret at the end
+     * of the line on every platform.
+     */
+    async function edgeOf(selector: string, side: "start" | "after") {
       await viewer.idle()
       const r = await pageOf().evaluate(([sel, side]) => {
         const range = document.createRange()
         range.selectNodeContents(document.querySelector(sel)!)
         // One rectangle per text run (a link is its own run)
         const rects = range.getClientRects()
-        const rect = side === "left" ? rects[0] : rects[rects.length - 1]
+        const rect = side === "start" ? rects[0] : rects[rects.length - 1]
         return { left: rect.left, right: rect.right, top: rect.top, height: rect.height }
       }, [selector, side] as const)
-      const x = side === "left" ? r.left + 1 : r.right - 1
-      return { x: Math.floor(x / size.cell.width) + 1, y: Math.floor((r.top + r.height / 2) / size.cell.height) + 1 }
+      const y = Math.floor((r.top + r.height / 2) / size.cell.height) + 1
+      if (side === "start") return { x: Math.floor((r.left + 1) / size.cell.width) + 1, y }
+      // Two cells on, so the centre is at least 1.5 cells past the last glyph
+      return { x: Math.floor(r.right / size.cell.width) + 3, y }
     }
 
     beforeAll(() => {
@@ -307,15 +315,18 @@ describe("Viewer", () => {
 
     test("dragging selects the text, and releasing copies it with OSC 52", async () => {
       await open(S)
-      const from = await edgeOf("p", "left")
-      const to = await edgeOf("p", "right")
+      const from = await edgeOf("p", "start")
+      const to = await edgeOf("p", "after")
       output.length = 0
       await viewer.handle({ type: "press", ...from })
       await viewer.handle({ type: "drag", x: from.x + 3, y: from.y })
       await viewer.handle({ type: "drag", ...to })
       await viewer.handle({ type: "release", ...to })
       const text = await selection()
-      expect(text).toContain("段落です。English")
+      // Up to the end of the line; the first character depends on where the
+      // centre of the first cell falls, which is Chromium's and the fonts' business
+      expect(text).toEndWith("段落です。English words here.")
+      // What the viewer sends is exactly what Chromium selected
       expect(copied()).toBe(text)
       // Counted in characters, not UTF-16 units or bytes
       expect(output.join("")).toContain(`Copied ${[...text].length} characters`)
@@ -327,20 +338,21 @@ describe("Viewer", () => {
     test("a drag that starts on a link selects instead of opening it", async () => {
       await open(S)
       const before = opened.length
-      const from = await edgeOf("a", "left")
-      const to = await edgeOf("p:nth-of-type(2)", "right")
+      const from = await edgeOf("a", "start")
+      const to = await edgeOf("p:nth-of-type(2)", "after")
       output.length = 0
       await viewer.handle({ type: "press", ...from })
       await viewer.handle({ type: "drag", ...to })
       await viewer.handle({ type: "release", ...to })
       expect(opened.length).toBe(before)
       expect(viewer.currentPath).toBe(S)
-      expect(copied()).toContain("after the link")
+      expect(copied()).toBe(await selection())
+      expect(copied()).toEndWith("link after the link")
     }, 30_000)
 
     test("press and release in the same cell is a click: links open, the selection is cleared", async () => {
       await open(S)
-      const p = await edgeOf("p", "left")
+      const p = await edgeOf("p", "start")
       await viewer.handle({ type: "press", ...p })
       await viewer.handle({ type: "drag", x: p.x + 5, y: p.y })
       await viewer.handle({ type: "release", x: p.x + 5, y: p.y })
@@ -359,7 +371,7 @@ describe("Viewer", () => {
 
     test("dragging over the status line selects up to the last row", async () => {
       await open(S)
-      const from = await edgeOf("p", "left")
+      const from = await edgeOf("p", "start")
       await viewer.handle({ type: "press", ...from })
       await viewer.handle({ type: "drag", x: 40, y: size.rows })
       await viewer.handle({ type: "drag", x: 200, y: 99 })
@@ -384,7 +396,7 @@ describe("Viewer", () => {
 
     test("a burst of drag events collapses into a few frames", async () => {
       await open(S)
-      const from = await edgeOf("p", "left")
+      const from = await edgeOf("p", "start")
       output.length = 0
       await viewer.handle({ type: "press", ...from })
       for (let i = 0; i < 30; i++) await viewer.handle({ type: "drag", x: 5 + (i % 60), y: 3 + (i % 15) })
@@ -396,7 +408,7 @@ describe("Viewer", () => {
 
     test("zooming and opening another document drop the selection", async () => {
       await open(S)
-      const from = await edgeOf("p", "left")
+      const from = await edgeOf("p", "start")
       await viewer.handle({ type: "press", ...from })
       await viewer.handle({ type: "drag", x: 40, y: 10 })
       await viewer.handle({ type: "release", x: 40, y: 10 })
