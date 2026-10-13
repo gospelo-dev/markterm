@@ -2,6 +2,21 @@
 
 All notable changes to markterm are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Viewer: `-z` above 100 (up to 400) draws the page wider than the terminal and scrolls sideways to the part that does not fit, with `l` / `Right` and `h` / `Left`, a sideways wheel or `Shift` + wheel. The page keeps its 100% layout, and clicks, hover, text selection and animated images follow the sideways position
+- Viewer: `N` goes forward again after going back, and `B` goes back like `h`
+
+### Changed
+
+- Viewer: at 100% the page's text is as large as the terminal's own text, estimated from the cell width, and follows a change of the terminal's font size. `-s` now defaults to `auto`; `-s 2` gives the fixed scale used before. Image mode still renders at 2
+- Viewer: `+` and `-` change the zoom given with `-z`, up to 400%, and `0` goes back to it. The status line shows that zoom (`150%` for `-z 150`). Zooming in above 100% no longer re-flows the page into the terminal width: it keeps its 100% layout and scrolls sideways
+- Viewer: Markdown, image and PDF pages are no longer zoomed out when their content is wider than the terminal (a README could open at 86% on a narrow terminal). They open at the `-z` zoom and scroll sideways. HTML pages are still fitted to the width
+- Viewer: on a page wider than the terminal, `h` and `Left` scroll sideways instead of going back; `B` and `Backspace` still go back
+- Viewer: the status line shows `[B] back`, `[N] forward` and `[s] save html` when they apply, no longer shows `[j/k] scroll`, and on a narrow terminal shows as many keys as fit instead of none
+
 ## 0.5.0 - 2026-10-01
 
 ### Added

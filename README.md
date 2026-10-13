@@ -104,20 +104,40 @@ The viewer renders the document in headless Chromium and shows the part that fit
 
 | Keys | Action |
 |------|--------|
-| `j` / `k`, arrows, mouse wheel | Scroll |
+| `j` / `k`, `Up` / `Down`, mouse wheel | Scroll |
 | `Space` / `b`, `PgDn` / `PgUp` | Page down / up |
 | `g` / `G`, `Home` / `End` | Top / bottom |
+| `h` / `l`, `Left` / `Right`, sideways wheel, `Shift` + wheel | Scroll sideways, when the page is wider than the terminal |
 | Click | Follow a link |
 | Drag | Select text and copy it to the clipboard |
-| `h`, `Left`, `Backspace` | Back |
-| `+` (or `=`), `-`, `0` | Zoom in, zoom out, reset |
+| `B`, `Backspace` | Back |
+| `N` | Forward, after going back |
+| `+` (or `=`), `-`, `0` | Zoom in, zoom out, reset to the `-z` value |
 | `r` | Reload the file from disk |
 | `s` / `p` | Save as HTML / PNG (Markdown only) |
 | `q`, `Ctrl-C` | Quit |
 
+- `h` / `j` / `k` / `l` are left / down / up / right, as in vim, and the arrow keys do the same.
+- On a page that is not wider than the terminal there is nothing to scroll sideways: `l` and `Right` do nothing, and `h` and `Left` go back, as they did in earlier versions.
+- A sideways wheel, a sideways swipe on a trackpad and `Shift` + wheel work where the terminal reports them.
+
+### Status line
+
+The last row shows the file name on the left. On the right it shows the zoom when it is not 100%, the position in the document (`Top`, a percentage, `Bot`, or `All` when the whole page fits), and the keys that apply now:
+
+| Shown | When |
+|-------|------|
+| `[B] back` | There is a document to go back to |
+| `[N] forward` | There is a document to go forward to |
+| `[+/-] zoom` | Always |
+| `[s] save html` | A Markdown document is open |
+| `[q] quit`, `[click] link`, `[drag] copy` | Always |
+
+On a narrow terminal as many of them as fit are shown, from the left. A message (`Copied N characters`, `Saved ...`) or the target of the link under the pointer takes their place while it is shown.
+
 ### Links
 
-- Links to local `.md`, `.html`, image and `.pdf` files open in the viewer, with a history for `h`. A fragment (`other.md#install`) scrolls to that heading.
+- Links to local `.md`, `.html`, image and `.pdf` files open in the viewer, with a history for `B` and `N`. A fragment (`other.md#install`) scrolls to that heading.
 - In-page links (`#section`) scroll the page. Headings get GitHub-style ids, including non-ASCII ones.
 - Other links (`https://`, `mailto:`, other files) open with the system's default handler.
 - Hovering a link shows its target in the status line. In Ghostty and Kitty the mouse pointer also turns into a hand (OSC 22).
@@ -143,11 +163,14 @@ HTML, image and PDF files need the viewer; in image mode markterm exits with cod
 
 ### Zoom and width
 
-- `+` / `-` step through 50% to 300%, like a browser. The page is re-rendered at the new zoom, so text stays sharp. The status line shows the zoom when it is not 100%.
-- A page wider than the terminal (common for HTML pages) is zoomed out automatically until it fits, down to 25%. `+` and `-` then work from the fitted level and are kept as chosen.
-- `-s` and `-z` set the starting scale and zoom, as in image mode.
-- Changing the terminal's font size (for example `Cmd` + `+` in Ghostty) is detected and the page re-rendered at the new cell size.
-- While a window is being resized, the viewer waits until the size has been stable for 0.25 s before re-rendering, so dragging does not flicker.
+- **Text size**: at 100% the page's text is as large as the terminal's own text. A terminal does not report its font size, so it is estimated from the width of a cell (a monospace character is about 0.6 em wide). With a narrow font the page's text comes out a little smaller. `--font-size` (default 16) makes the text larger or smaller than the terminal's, and `-s <factor>` sets a fixed scale instead (`-s 2` is what earlier versions used).
+- **Zoom**: `-z <percent>` (1-400, default 100) sets the zoom the viewer starts at. `+` / `-` change it from there through 50, 67, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300 and 400%, and `0` goes back to the `-z` value. The page is re-rendered at the new zoom, so text stays sharp. The status line shows the zoom when it is not 100%.
+- **Below 100%** the page is laid out wider and shown smaller, so it still fills the terminal width.
+- **Above 100%** the page keeps the layout it has at 100% and is drawn larger than the terminal: at 150% it is 1.5 terminal widths wide. The part that does not fit is reached by scrolling sideways. Changing the zoom keeps the same part of the page at the left edge.
+- **Wide content**: a Markdown page always opens at the `-z` zoom. Where its content is wider than the terminal, such as a wide table, the page scrolls sideways instead of being zoomed out. The same goes for image and PDF files.
+- **HTML pages** bring their own layout, often for a wide screen. One that is wider than the terminal is zoomed out automatically until it fits, down to 25%. `+` and `-` then work from the fitted level and are kept as chosen.
+- Changing the terminal's font size (for example `Cmd` + `+` in Ghostty) is detected and the page re-rendered at the new cell size, with its text following the terminal's.
+- While a window is being resized, the viewer waits until the size has been stable for 0.25 s before re-rendering, so dragging does not flicker. A resize keeps the relative position, down and sideways.
 
 ### Animated images
 
@@ -172,9 +195,10 @@ Animated GIFs and WebPs on screen play at up to 10 frames per second. Only the i
     --no-highlight             Disable syntax highlighting of code blocks
     --no-links                 Image mode: do not list the document's links after the image (see Link list)
 -i, --image                    Print one inline image instead of opening the viewer
--s, --scale <factor>           Device scale factor passed to Chromium (default: 2)
+-s, --scale <auto|factor>      Device scale factor passed to Chromium. auto: the viewer matches
+                               the terminal's font size, image mode uses 2 (default: auto)
     --mermaid <version>        MermaidJS version loaded from jsDelivr (default: 11.16.0)
--z, --zoom <percent>           Zoom, 1-100 (default: 100)
+-z, --zoom <percent>           Zoom, 1-400 (default: 100). Above 100 the viewer scrolls sideways
 -p, --protocol <name>          Force the image protocol: kitty, iterm2, sixel, file
 -o, --output <file>            Save to a file instead of displaying: .png for an image, .html for a self-contained page
 -h, --help                     Show help, the detected protocol and the viewer keys
@@ -240,11 +264,11 @@ Image mode prints the document once as an inline image. It is used with `-i`, wi
 
 ### Width and Zoom
 
-The page is laid out at a viewport width in CSS px and captured at `--scale` times that resolution.
+The page is laid out at a viewport width in CSS px and captured at `--scale` times that resolution (2 unless `-s` gives another factor).
 
 - `-w auto` estimates the width as `terminal columns x 8 px / scale`. Pixel dimensions are not queried from the terminal, so terminals with wide fonts may need an explicit `-w`.
 - `-w <px>` sets the viewport width directly.
-- `-z <percent>` multiplies the viewport width by `100 / zoom`, so at `-z 50` the page is laid out twice as wide and then displayed at terminal width, which makes the content appear at half size. It does not change the image's on-screen width.
+- `-z <percent>` multiplies the viewport width by `100 / zoom`, so at `-z 50` the page is laid out twice as wide and then displayed at terminal width, which makes the content appear at half size. It does not change the image's on-screen width. An inline image cannot scroll sideways, so in image mode values above 100 are treated as 100; they apply to the [viewer](#zoom-and-width).
 - The rendered image is transmitted with a column count equal to the terminal width, so it always spans the full terminal width for Kitty Graphics and iTerm2. Sixel output is sent at native pixel size.
 - **Tall documents**: terminals limit the size of one inline image. Ghostty rejects Kitty Graphics images taller than 10000 px; iTerm2 rejects images of 10000 px or more and shows at most 255 rows per image. When a render is taller than the limit, markterm cuts it into horizontal bands and transmits them one after another, so the document still appears as one continuous image. Bands are at most 10000 px for Kitty Graphics, and for iTerm2 as tall as 255 rows allow at the current terminal width (about 3300 px for a 640 px render on 80 columns). Cut positions are measured in Chromium and placed in the gap between blocks, or at a table row, list item or text line boundary inside a block that is itself taller than a band; never inside an image or diagram. The terminal may leave up to one blank row at each seam. Width is not split, so keep `--width x --scale` below 10000 px. Sixel output is not split. The temp file and `-o` always receive the whole render.
 - **Large images in iTerm2**: iTerm2 accepts at most 1 MiB per control sequence. Bands whose base64 payload would exceed that are sent with the multipart form (`MultipartFile`, `FilePart`, `FileEnd`) introduced in iTerm2 3.5. Smaller ones keep the classic single `File=` sequence, which works on every iTerm2 version.
