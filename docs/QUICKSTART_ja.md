@@ -183,17 +183,17 @@ export MARKTERM_PROTOCOL=kitty
 
 tmux や screen の中では、画像のエスケープシーケンスが通常は外側のターミナルに届かないため、markterm はファイル保存にフォールバックします。マルチプレクサの外で実行してください。
 
-### "browserType.launch: Executable doesn't exist at .../chromium_headless_shell-NNNN" と表示される
+### "Chromium for Playwright N.N.N is not installed" と表示される
 
-markterm が使う Playwright が、インストールされていない Chromium のビルドを探しています。markterm と一緒にインストールされた Playwright と、Chromium をダウンロードした Playwright のバージョンが違う場合に起こります。markterm を更新したあとや、古い Playwright が別に残っている場合などです。markterm 0.4 には Playwright 1.63 以上が必要です。
+markterm が使う Playwright が、まだダウンロードされていない Chromium のビルドを探しています。Playwright はバージョンごとに専用のビルドを必要とするため、新規インストールのときのほか、markterm を更新して Playwright が新しくなったときにも起こります。メッセージに表示されたコマンドを実行してください。
 
 ```bash
-# markterm を入れ直して新しい Playwright を使うようにし、その Chromium をダウンロード
-npm install -g markterm
-npx playwright install chromium
+npx playwright@N.N.N install chromium
 ```
 
-それでも古いビルド番号が表示される場合は、`npm ls -g playwright` で markterm が読み込む Playwright のバージョンを確認し、そのバージョン用の Chromium を `npx playwright@<バージョン> install chromium` でインストールしてください。
+コマンドのバージョン指定が重要です。独自の Playwright を持つプロジェクトの中でバージョンなしの `npx playwright install chromium` を実行すると、そのプロジェクトのバージョン用のビルドがダウンロードされます。
+
+markterm 0.6.0 以前では、このメッセージの代わりに `browserType.launch: Executable doesn't exist at .../chromium_headless_shell-NNNN` とスタックトレースが表示されます。原因と対処は同じで、バージョンは markterm と一緒に入っている `node_modules/playwright/package.json` で確認できます。
 
 ### "Sixel display requires img2sixel" と表示される
 

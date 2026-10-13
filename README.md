@@ -20,7 +20,7 @@ See [docs/QUICKSTART.md](docs/QUICKSTART.md) for a step-by-step setup guide. 日
 | Requirement | Notes |
 |-------------|-------|
 | Node.js >= 20 or Bun >= 1.1 | Either runtime works. The `markterm` command runs on Node.js; without Node.js, run it with `bunx --bun markterm`. |
-| Chromium | Installed once with `npx playwright install chromium` (or `bunx playwright install chromium`). A headless browser is launched on every run. |
+| Chromium | Installed once with `npx playwright install chromium` (or `bunx playwright install chromium`). A headless browser is launched on every run. Each Playwright version needs its own Chromium build, so an upgrade of markterm can ask for it again; markterm then prints the exact command. |
 | Network access | MermaidJS, and pdf.js for PDFs in the viewer, are loaded from the jsDelivr CDN. Offline, Mermaid blocks stay as raw text and PDFs cannot be shown. |
 | `img2sixel` (Sixel terminals only) | From libsixel. Only for image mode on Sixel terminals. |
 

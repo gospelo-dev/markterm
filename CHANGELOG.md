@@ -2,6 +2,16 @@
 
 All notable changes to markterm are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- When Playwright's Chromium has not been downloaded (a new install, or an upgrade that brought a newer Playwright), markterm prints `Chromium for Playwright N.N.N is not installed` with the command that installs that build (`npx playwright@N.N.N install chromium`) and exits with code `1`, instead of a stack trace. The check runs before the viewer takes over the screen
+
+### Added
+
+- Library API: `ChromiumMissingError`, thrown by the render functions in that case
+
 ## 0.6.0 - 2026-10-14
 
 ### Added
