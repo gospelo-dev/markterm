@@ -36,7 +36,7 @@ const { values, positionals } = parseArgs({
     "no-highlight": { type: "boolean", default: false },
     "no-links": { type: "boolean", default: false },
     image: { type: "boolean", short: "i", default: false },
-    scale: { type: "string", short: "s", default: "2" },
+    scale: { type: "string", short: "s", default: "auto" },
     mermaid: { type: "string", default: "11.16.0" },
     zoom: { type: "string", short: "z", default: "100" },
     protocol: { type: "string", short: "p" },
@@ -76,9 +76,11 @@ Options:
       --no-highlight             Disable syntax highlighting of code blocks
       --no-links                 Do not list the document's links after the image
   -i, --image                    Print one inline image instead of opening the viewer
-  -s, --scale <factor>           Device scale factor (default: 2)
+  -s, --scale <auto|factor>      Device scale factor. auto: the viewer matches the
+                                 terminal's font size, image mode uses 2 (default: auto)
       --mermaid <version>        MermaidJS version (default: 11.16.0)
-  -z, --zoom <percent>           Display zoom: 1-100% of terminal width (default: 100)
+  -z, --zoom <percent>           Display zoom: 1-400% of terminal width (default: 100).
+                                 Above 100 the viewer scrolls sideways; +/- change it
   -p, --protocol <name>          Force protocol: kitty, iterm2, sixel, file
   -o, --output <file>            Save to a file instead of displaying: .png for an image,
                                  .html for a self-contained web page
@@ -115,8 +117,10 @@ Environment (command-line options take precedence):
 Viewer keys:
   j/k, arrows, wheel   Scroll            space/b, PgDn/PgUp  Page down/up
   g/G, Home/End        Top/bottom        click               Follow a link
-  h, Left, Backspace   Back              r                   Reload the file
+  B, h, Left, Backspace  Back            r                   Reload the file
+  N                    Forward
   +/=, -, 0            Zoom in/out/reset s / p               Save as HTML / PNG
+  l, Right / h, Left   Scroll sideways (page wider than the terminal; also Shift-wheel)
   q, Ctrl-C            Quit
   Linked .md, .html, image and .pdf files open in the viewer; other links open in
   the system browser. HTML files keep their own styles; -t and the font options
@@ -201,14 +205,17 @@ async function resolveColors(): Promise<ThemeColors> {
 const colors = await resolveColors()
 
 const fontSize = parseInt(values["font-size"]!, 10)
-const scale = parseFloat(values.scale!)
+// auto: the viewer takes the scale from the terminal's font; an image is rendered at 2
+const scaleAuto = values.scale === "auto"
+const scale = scaleAuto ? 2 : parseFloat(values.scale!)
 const mermaidVersion = values.mermaid!
 
-const zoom = Math.max(1, Math.min(100, parseInt(values.zoom!, 10)))
+const zoom = Math.max(1, Math.min(400, parseInt(values.zoom!, 10)))
 const baseWidth = values.width === "auto"
   ? estimateViewportWidth(scale)
   : parseInt(values.width!, 10)
-const width = Math.round(baseWidth * (100 / zoom))
+// An inline image cannot scroll sideways: above 100% only applies to the viewer
+const width = Math.round(baseWidth * (100 / Math.min(zoom, 100)))
 
 let source: string
 let basePath: string
@@ -289,8 +296,8 @@ if (mode === "viewer") {
   const path = inputPath
   await runViewer(
     { source: kind === "image" || kind === "pdf" ? "" : source, path, basePath, kind },
-    // -z zooms out by showing more CSS pixels per device pixel
-    { render, scale: (scale * zoom) / 100 },
+    // -z is the zoom the viewer starts at; + and - change it from there
+    { render, scale: scaleAuto ? undefined : scale, zoom: zoom / 100 },
   )
   await dispose()
   process.exit(0)

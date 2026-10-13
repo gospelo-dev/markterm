@@ -78,7 +78,7 @@ export function openExternal(url: string): void {
  */
 export async function runViewer(
   doc: ViewerDocument,
-  opts: { render: Omit<DocumentOptions, "basePath">; scale: number },
+  opts: { render: Omit<DocumentOptions, "basePath">; scale?: number; zoom?: number },
 ): Promise<void> {
   const output = process.stdout
   const input = new ReadStream(openSync("/dev/tty", "r"))
@@ -102,7 +102,7 @@ export async function runViewer(
   output.write(ENTER)
   // Set once the event handlers are attached; stops a pending resize on exit
   let cleanup = () => {}
-  const viewer = await Viewer.create({ output, size: size(), scale: opts.scale, render: opts.render, openExternal })
+  const viewer = await Viewer.create({ output, size: size(), scale: opts.scale, zoom: opts.zoom, render: opts.render, openExternal })
   try {
     await viewer.open(doc)
     await new Promise<void>((resolve, reject) => {

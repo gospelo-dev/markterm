@@ -62,6 +62,15 @@ describe("InputParser", () => {
     ])
   })
 
+  test("SGR mouse: a sideways wheel, and Shift with the wheel, scroll left and right", () => {
+    expect(parse("\x1b[<66;3;4M\x1b[<67;3;4M\x1b[<68;3;4M\x1b[<69;3;4M")).toEqual([
+      { type: "wheel", direction: "left", x: 3, y: 4 },
+      { type: "wheel", direction: "right", x: 3, y: 4 },
+      { type: "wheel", direction: "left", x: 3, y: 4 },
+      { type: "wheel", direction: "right", x: 3, y: 4 },
+    ])
+  })
+
   test("a sequence split across chunks is joined", () => {
     expect(parse("\x1b[<0;1", "0;7M", "\x1b", "[B")).toEqual([
       { type: "press", x: 10, y: 7 },

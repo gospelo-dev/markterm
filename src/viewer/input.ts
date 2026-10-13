@@ -27,7 +27,8 @@ export type InputEvent =
   | { type: "drag"; x: number; y: number }
   /** The left button was released. */
   | { type: "release"; x: number; y: number }
-  | { type: "wheel"; direction: "up" | "down"; x: number; y: number }
+  /** Left and right come from a sideways wheel or trackpad, or from Shift with the wheel. */
+  | { type: "wheel"; direction: "up" | "down" | "left" | "right"; x: number; y: number }
   /** The pointer moved with no button held. */
   | { type: "move"; x: number; y: number }
 
@@ -88,6 +89,9 @@ export class InputParser {
         const left = button & ~MODIFIERS
         if (button === 64 || button === 65) {
           events.push({ type: "wheel", direction: button === 64 ? "up" : "down", x, y })
+        } else if (button >= 66 && button <= 69) {
+          // 66, 67: wheel left, right. 68, 69: Shift (4) + wheel up, down
+          events.push({ type: "wheel", direction: button % 2 === 0 ? "left" : "right", x, y })
         } else if (left === 0) {
           events.push({ type: press ? "press" : "release", x, y })
         } else if (left === 32 && press) {
