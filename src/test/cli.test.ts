@@ -64,6 +64,21 @@ describe("markterm CLI", () => {
     expect(r.stderr).toContain("dracula")
   })
 
+  test("exits 1 with the install command, not a stack trace, when Chromium is not downloaded", () => {
+    // An empty browsers directory is what a fresh install, or one after a Playwright upgrade, looks like
+    const empty = mkdtempSync(join(tmpdir(), "markterm-no-browser-"))
+    try {
+      const r = run([], "# Hi\n", { PLAYWRIGHT_BROWSERS_PATH: empty })
+      expect(r.code).toBe(1)
+      expect(r.stderr).toMatch(/^Chromium for Playwright \d+\.\d+\.\d+ is not installed\./)
+      expect(r.stderr).toMatch(/\n {2}npx playwright@\d+\.\d+\.\d+ install chromium\n/)
+      expect(r.stderr).not.toContain("    at ")
+      expect(r.stdout).toBe("")
+    } finally {
+      rmSync(empty, { recursive: true, force: true })
+    }
+  })
+
   test("exits 1 on an unknown MARKTERM_THEME and names the variable", () => {
     const r = run([], "# Hi\n", { MARKTERM_THEME: "no-such-theme" })
     expect(r.code).toBe(1)

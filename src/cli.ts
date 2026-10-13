@@ -3,7 +3,14 @@ import { resolve, dirname } from "path"
 import { parseArgs } from "util"
 import { readFile, writeFile } from "fs/promises"
 import { existsSync } from "fs"
-import { markdownToImage, markdownToImageBands, markdownToStandaloneHtml, dispose } from "./render/screenshot.js"
+import {
+  ChromiumMissingError,
+  dispose,
+  getBrowser,
+  markdownToImage,
+  markdownToImageBands,
+  markdownToStandaloneHtml,
+} from "./render/screenshot.js"
 import { detectProtocol, detectMultiplexer, displayInline, maxBandHeightFor, type Protocol } from "./protocol/index.js"
 import { estimateViewportWidth } from "./terminal.js"
 import { extractLinks, formatFilePath, formatLinkList } from "./links.js"
@@ -285,6 +292,17 @@ if (mode === "image" && kind !== "markdown") {
     `${positionals[0]} can only be shown in the viewer, which needs a terminal with the ` +
       "Kitty graphics protocol (Ghostty, Kitty, WezTerm) on stdout, outside tmux/screen, without -i or -o.",
   )
+  process.exit(1)
+}
+
+// Every mode renders in Chromium. Start it now, so that a browser that was
+// never downloaded is reported with the command that installs it, before the
+// viewer takes over the screen.
+try {
+  await getBrowser()
+} catch (err) {
+  if (!(err instanceof ChromiumMissingError)) throw err
+  console.error(err.message)
   process.exit(1)
 }
 

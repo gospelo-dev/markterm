@@ -6,6 +6,7 @@ export {
   markdownToStandaloneHtml,
   measureCutCandidates,
   dispose,
+  ChromiumMissingError,
   type ScreenshotOptions,
   type BandOptions,
   type ImageBands,
