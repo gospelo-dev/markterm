@@ -1,6 +1,7 @@
 import { resolve, dirname, extname } from "path"
 import { readFile } from "fs/promises"
 import { existsSync } from "fs"
+import { createRequire } from "module"
 import { chromium, type Browser, type Page } from "playwright"
 import { markdownToDocument, renderBody, type DocumentOptions } from "./document.js"
 import { buildHtml, type TemplateOptions } from "./template.js"
@@ -19,10 +20,46 @@ const MIME_TYPES: Record<string, string> = {
 
 let browserInstance: Browser | null = null
 
-/** The shared headless Chromium, launched on first use. Closed by dispose(). */
+/**
+ * Playwright's Chromium has not been downloaded. Each Playwright version
+ * needs its own build, so this also happens after Playwright was upgraded.
+ */
+export class ChromiumMissingError extends Error {
+  constructor(playwrightVersion: string | null) {
+    // With the version, npx installs the build this Playwright needs even
+    // when it runs in a project that has another Playwright
+    const pkg = playwrightVersion ? `playwright@${playwrightVersion}` : "playwright"
+    super(
+      `Chromium${playwrightVersion ? ` for Playwright ${playwrightVersion}` : ""} is not installed. ` +
+        `Download it once with:\n\n  npx ${pkg} install chromium\n`,
+    )
+    this.name = "ChromiumMissingError"
+  }
+}
+
+/** The version of the Playwright in use, or null if it cannot be read. */
+function playwrightVersion(): string | null {
+  try {
+    return (createRequire(import.meta.url)("playwright/package.json") as { version: string }).version
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The shared headless Chromium, launched on first use. Closed by dispose().
+ * Throws ChromiumMissingError if the browser has not been downloaded.
+ */
 export async function getBrowser(): Promise<Browser> {
   if (browserInstance?.isConnected()) return browserInstance
-  browserInstance = await chromium.launch()
+  try {
+    browserInstance = await chromium.launch()
+  } catch (err) {
+    if (err instanceof Error && /Executable doesn't exist/.test(err.message)) {
+      throw new ChromiumMissingError(playwrightVersion())
+    }
+    throw err
+  }
   return browserInstance
 }
 

@@ -20,7 +20,7 @@ markterm はヘッドレス Chromium で Markdown をフルスタイリング、
 | 要件 | 補足 |
 |------|------|
 | Node.js 20 以上 または Bun 1.1 以上 | どちらのランタイムでも動作します。`markterm` コマンドは Node.js で実行されます。Node.js がない環境では `bunx --bun markterm` で実行してください。 |
-| Chromium | `npx playwright install chromium`（または `bunx playwright install chromium`）で一度だけインストールします。実行のたびにヘッドレスブラウザが起動します。 |
+| Chromium | `npx playwright install chromium`（または `bunx playwright install chromium`）で一度だけインストールします。実行のたびにヘッドレスブラウザが起動します。Playwright はバージョンごとに専用の Chromium ビルドを必要とするため、markterm を更新すると再度必要になることがあります。その場合は markterm が実行すべきコマンドを表示します。 |
 | ネットワーク接続 | MermaidJS と、ビューアで PDF を表示するための pdf.js は、レンダリング時に jsDelivr CDN からロードします。オフラインでは Mermaid ブロックは生テキストのまま表示され、PDF は表示できません。 |
 | `img2sixel`（Sixel ターミナルのみ） | libsixel に含まれます。Sixel ターミナルでの画像表示モードでのみ必要です。 |
 

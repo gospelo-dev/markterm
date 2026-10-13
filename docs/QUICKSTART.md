@@ -183,17 +183,17 @@ export MARKTERM_PROTOCOL=kitty
 
 Inside tmux or screen, image escape sequences generally do not reach the outer terminal, so markterm falls back to saving the file. Run it outside the multiplexer.
 
-### "browserType.launch: Executable doesn't exist at .../chromium_headless_shell-NNNN"
+### "Chromium for Playwright N.N.N is not installed"
 
-The Playwright that markterm uses expects a Chromium build that is not installed. This happens when the Playwright installed with markterm and the one that downloaded Chromium are different versions, for example after upgrading markterm, or when an older Playwright stays installed next to it. markterm 0.4 needs Playwright 1.63 or later.
+The Playwright that markterm uses expects a Chromium build that has not been downloaded. Each Playwright version needs its own build, so this happens on a new install, and also after upgrading markterm, which can bring a newer Playwright. Run the command that the message prints:
 
 ```bash
-# Reinstall markterm so it gets a current Playwright, then download its Chromium
-npm install -g markterm
-npx playwright install chromium
+npx playwright@N.N.N install chromium
 ```
 
-If the error names an older build number again, check which Playwright markterm loads with `npm ls -g playwright`, and install Chromium for that version: `npx playwright@<version> install chromium`.
+The version in the command matters. A plain `npx playwright install chromium` run inside a project that has its own Playwright downloads the build for that project's version instead.
+
+markterm 0.6.0 and earlier print `browserType.launch: Executable doesn't exist at .../chromium_headless_shell-NNNN` and a stack trace instead of this message. The cause and the fix are the same; the version is the one in `node_modules/playwright/package.json` next to markterm.
 
 ### "Sixel display requires img2sixel"
 
