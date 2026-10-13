@@ -65,11 +65,19 @@ markterm document.md
 | `Space` / `b` | Page down / up |
 | `g` / `G` | Top / bottom |
 | Click | Follow a link (`.md`, `.html`, images and `.pdf` open in the viewer) |
-| `h` | Back |
+| `h` / `l`, `Left` / `Right` | Scroll sideways, when the page is wider than the terminal |
+| `B` / `N` | Back / forward |
 | `+` / `-` / `0` | Zoom in / out / reset |
 | `r` | Reload the file |
 | `s` / `p` | Save as HTML / PNG |
 | `q` | Quit |
+
+At 100% the page's text is as large as your terminal's own text. `-z` sets the zoom to start at, and `+` / `-` change it from there:
+
+```bash
+# Start at 150%: the page is wider than the terminal, scroll sideways with h / l
+markterm document.md -z 150
+```
 
 ### Open HTML, images and PDFs
 
@@ -197,7 +205,7 @@ Auto-detection needs both stdin and stdout to be a TTY and a terminal that answe
 
 ### Text too small or too large
 
-In the viewer, press `+` or `-`. In image mode, the automatic width is estimated as `columns x 8 px / scale`, which assumes a narrow font. Adjust the width or zoom:
+In the viewer, press `+` or `-`, or start at another zoom with `-z`. The viewer estimates the terminal's font size from the width of a cell; to make the page's text larger or smaller than the terminal's, pass `--font-size` (default 16), or a fixed scale such as `-s 2`. In image mode, the automatic width is estimated as `columns x 8 px / scale`, which assumes a narrow font. Adjust the width or zoom:
 
 ```bash
 markterm document.md -i -w 1200

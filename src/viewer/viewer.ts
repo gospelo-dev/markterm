@@ -13,10 +13,25 @@ import { copyToClipboard, deleteImage, placeImage, pointerShape, statusLine, typ
 const MARKDOWN_EXT = /\.(md|markdown)$/i
 
 /** Zoom levels for +/-, like a browser's. */
-export const ZOOM_STEPS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3]
+export const ZOOM_STEPS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4]
 
 /** Fitting a wide page to the width never zooms out further than this. */
 const MIN_ZOOM = 0.25
+
+/** A monospace character is about this wide, in ems: the terminal's font size is its cell width divided by this. */
+const CELL_WIDTH_EM = 0.6
+
+/** The page's default font size in CSS pixels (--font-size). */
+const BASE_FONT_SIZE = 16
+
+/**
+ * The scale at which the page's default 16 px text is as large as the
+ * terminal's own text. A terminal does not report its font size, so it is
+ * estimated from the width of a cell.
+ */
+export function terminalScale(cell: CellSize): number {
+  return cell.width / CELL_WIDTH_EM / BASE_FONT_SIZE
+}
 
 /** How often visible GIFs are redrawn: 10 frames per second. */
 export const ANIMATION_INTERVAL_MS = 100
@@ -58,9 +73,9 @@ function readableUrl(url: string): string {
   }
 }
 
-async function newPage(size: ViewerSize, scale: number): Promise<Page> {
+async function newPage(viewport: { width: number; height: number }, scale: number): Promise<Page> {
   const browser = await getBrowser()
-  return browser.newPage({ viewport: viewportFor(size, scale), deviceScaleFactor: scale })
+  return browser.newPage({ viewport, deviceScaleFactor: scale })
 }
 
 export type ViewerDocument = {
@@ -112,14 +127,26 @@ export type ViewerSize = { cols: number; rows: number; cell: CellSize }
 export type ViewerOptions = {
   output: { write(data: string): unknown }
   size: ViewerSize
-  /** Device pixels per CSS pixel. */
-  scale: number
+  /**
+   * Device pixels per CSS pixel. Left out, it is taken from the terminal's
+   * font, so that the page's text is as large as the terminal's (see terminalScale).
+   */
+  scale?: number
+  /**
+   * The zoom to start at, which + and - then change (default 1). Below 1 the
+   * page is laid out wider and shown smaller. Above 1 it keeps its layout, is
+   * drawn larger than the terminal, and the part that does not fit scrolls
+   * sideways.
+   */
+  zoom?: number
   render: Omit<DocumentOptions, "basePath">
   /** Open a URL that is not a local Markdown file, e.g. in the system browser. */
   openExternal: (url: string) => void
 }
 
 type Link = { raw: string; href: string }
+
+type HistoryEntry = { doc: ViewerDocument; scrollY: number }
 
 /**
  * A full-screen Markdown and HTML viewer: renders the document in headless
@@ -129,9 +156,20 @@ type Link = { raw: string; href: string }
  */
 export class Viewer {
   private doc: ViewerDocument | null = null
-  private history: { doc: ViewerDocument; scrollY: number }[] = []
+  private history: HistoryEntry[] = []
+  /** Documents gone back from, for going forward again; dropped when a link is followed. */
+  private future: HistoryEntry[] = []
   private scrollY = 0
   private maxScroll = 0
+  /**
+   * Sideways position in terminal columns, which stay the same when the zoom
+   * changes. Only moves when the page is wider than the terminal.
+   */
+  private scrollCol = 0
+  /** The page's width in CSS pixels, which is more than the viewport's when its content overflows. */
+  private pageWidth = 0
+  /** Where the last frame started inside the viewport, in CSS pixels (the page itself scrolls the rest). */
+  private clipX = 0
   /** The zoom in use: the user's, or less when the page was fitted to the width. */
   private zoom = 1
   /** The zoom the user chose with +, - and 0. */
@@ -169,7 +207,12 @@ export class Viewer {
   ) {}
 
   static async create(opts: ViewerOptions): Promise<Viewer> {
-    return new Viewer(await newPage(opts.size, opts.scale), opts, opts.size)
+    const zoom = opts.zoom ?? 1
+    const scale = (opts.scale ?? terminalScale(opts.size.cell)) * zoom
+    const page = await newPage(viewportFor(opts.size, scale, zoom), scale)
+    const viewer = new Viewer(page, opts, opts.size)
+    viewer.zoom = viewer.userZoom = zoom
+    return viewer
   }
 
   /** Current zoom, 1 = 100%. */
@@ -183,7 +226,8 @@ export class Viewer {
    * the terminal's pixel size and stays sharp.
    */
   private get effectiveScale(): number {
-    return this.opts.scale * this.zoom
+    // Without a given scale, follow the terminal's font, also when it changes
+    return (this.opts.scale ?? terminalScale(this.size.cell)) * this.zoom
   }
 
   /** The current document's path (undefined for stdin), for status and tests. */
@@ -193,6 +237,33 @@ export class Viewer {
 
   get scrollTop(): number {
     return this.scrollY
+  }
+
+  /** Sideways position in CSS pixels. */
+  get scrollLeft(): number {
+    return this.scrollCol * this.colWidth
+  }
+
+  /**
+   * The page's viewport: as tall as the terminal. Zoomed in, it is wider than
+   * the terminal by the zoom, so the page keeps the layout it has at 100%.
+   */
+  private get viewport(): { width: number; height: number } {
+    return viewportFor(this.size, this.effectiveScale, this.zoom)
+  }
+
+  /** CSS pixels per terminal column. */
+  private get colWidth(): number {
+    return this.size.cell.width / this.effectiveScale
+  }
+
+  /** How far the page can scroll sideways: its width beyond the terminal's, in columns. */
+  private get maxScrollCol(): number {
+    // Zoomed in, the viewport is wider than the terminal; a wide table or
+    // image can make the page wider than the viewport at any zoom
+    const extra = Math.max(this.viewport.width, this.pageWidth) - this.size.cols * this.colWidth
+    // A pixel or two is the rounding of the viewport's size, or of a fitted page
+    return extra < 2 ? 0 : extra / this.colWidth
   }
 
   private get contentRows(): number {
@@ -206,13 +277,14 @@ export class Viewer {
 
   async open(doc: ViewerDocument, fragment?: string): Promise<void> {
     await this.idle()
-    // Each document starts at the user's zoom, then shrinks if it is too wide
+    // Each document starts at the user's zoom; an HTML page then shrinks if it is too wide
     if (this.zoom !== this.userZoom) {
       this.zoom = this.userZoom
       await this.replacePage()
     }
     await this.load(doc)
     await this.fitWidth()
+    this.scrollCol = 0
     if (fragment) await this.scrollToFragment(fragment)
     await this.redraw()
   }
@@ -224,13 +296,16 @@ export class Viewer {
    * reflow, so the width is measured again after each step.
    */
   private async fitWidth(): Promise<void> {
-    for (let attempt = 0; attempt < 3 && this.doc; attempt++) {
+    // Only HTML pages, which bring their own layout. A Markdown page is laid
+    // out for the terminal; where a table is too wide, it scrolls sideways.
+    for (let attempt = 0; attempt < 3 && this.doc?.kind === "html"; attempt++) {
       const { scrollWidth, innerWidth } = await this.page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
         innerWidth: window.innerWidth,
       }))
       if (scrollWidth <= innerWidth + 1) return
-      const fitted = Math.max(MIN_ZOOM, (this.zoom * innerWidth) / scrollWidth)
+      // Zoomed in, the viewport is as wide as at 100%
+      const fitted = Math.max(MIN_ZOOM, (Math.min(this.zoom, 1) * innerWidth) / scrollWidth)
       if (this.zoom - fitted < 0.005) return
       this.zoom = fitted
       await this.replacePage()
@@ -277,9 +352,17 @@ export class Viewer {
     }
     this.doc = doc
     this.scrollY = 0
-    this.maxScroll = await this.page.evaluate(() =>
-      Math.max(0, document.documentElement.scrollHeight - window.innerHeight),
-    )
+    await this.measure()
+  }
+
+  /** Read how far the page scrolls down, and how wide it is. */
+  private async measure(): Promise<void> {
+    const { maxScroll, pageWidth } = await this.page.evaluate(() => ({
+      maxScroll: Math.max(0, document.documentElement.scrollHeight - window.innerHeight),
+      pageWidth: document.documentElement.scrollWidth,
+    }))
+    this.maxScroll = maxScroll
+    this.pageWidth = pageWidth
   }
 
   /** Handle one input event. Returns "quit" when the viewer should close. */
@@ -287,7 +370,12 @@ export class Viewer {
     // Pointer motion must not clear a message; it only updates the hover state
     if (event.type === "move") return this.hover(event.x, event.y)
     this.message = ""
-    if (event.type === "wheel") return this.scrollBy((event.direction === "down" ? 3 : -3) * this.rowHeight)
+    if (event.type === "wheel") {
+      if (event.direction === "left" || event.direction === "right") {
+        return this.scrollColBy(event.direction === "right" ? 6 : -6)
+      }
+      return this.scrollBy((event.direction === "down" ? 3 : -3) * this.rowHeight)
+    }
     if (event.type === "click") return this.click(event.x, event.y)
     if (event.type === "press") return this.pressAt(event.x, event.y)
     if (event.type === "drag") return this.drag(event.x, event.y)
@@ -320,8 +408,17 @@ export class Viewer {
         return this.scrollTo(Number.MAX_SAFE_INTEGER)
       case "h":
       case "left":
+        // On a page that scrolls sideways these scroll; B and Backspace go back
+        if (this.maxScrollCol > 0) return this.scrollColBy(-4)
+        return this.back()
+      case "B":
       case "backspace":
         return this.back()
+      case "N":
+        return this.forward()
+      case "l":
+      case "right":
+        return this.scrollColBy(4)
       case "r":
         return this.reload()
       case "+":
@@ -330,7 +427,8 @@ export class Viewer {
       case "-":
         return this.setZoom([...ZOOM_STEPS].reverse().find((z) => z < this.zoom - 1e-9) ?? this.zoom)
       case "0":
-        return this.setZoom(1)
+        // Back to the zoom the viewer started at (-z)
+        return this.setZoom(this.opts.zoom ?? 1)
       case "s":
         return this.save("html")
       case "p":
@@ -369,6 +467,8 @@ export class Viewer {
   async setZoom(zoom: number): Promise<void> {
     if (zoom === this.zoom && zoom === this.userZoom) return
     await this.idle()
+    // Keep the same part of the page at the left edge
+    this.scrollCol *= zoom / this.zoom
     this.userZoom = zoom
     this.zoom = zoom
     await this.rebuildPage({ fit: false })
@@ -386,7 +486,7 @@ export class Viewer {
     this.dragTarget = null
     await this.selecting
     const old = this.page
-    this.page = await newPage(this.size, this.effectiveScale)
+    this.page = await newPage(this.viewport, this.effectiveScale)
     await old.close()
     this.opts.output.write("\x1b[2J")
   }
@@ -395,13 +495,14 @@ export class Viewer {
    * Replace the page and re-render the document at the same relative scroll
    * position. With fit, start from the user's zoom and fit to the width again.
    */
-  private async rebuildPage(opts: { fit: boolean }): Promise<void> {
+  private async rebuildPage(opts: { fit: boolean; ratioX?: number }): Promise<void> {
     const ratio = this.maxScroll > 0 ? this.scrollY / this.maxScroll : 0
     if (opts.fit) this.zoom = this.userZoom
     await this.replacePage()
     if (!this.doc) return
     await this.load(this.doc)
     if (opts.fit) await this.fitWidth()
+    if (opts.ratioX !== undefined) this.scrollCol = opts.ratioX * this.maxScrollCol
     this.scrollTo(Math.round(ratio * this.maxScroll))
     await this.idle()
   }
@@ -409,16 +510,20 @@ export class Viewer {
   async resize(size: ViewerSize): Promise<void> {
     await this.idle()
     const cellChanged = size.cell.width !== this.size.cell.width || size.cell.height !== this.size.cell.height
+    const ratioX = this.maxScrollCol > 0 ? this.scrollCol / this.maxScrollCol : 0
     this.size = size
     if (cellChanged || this.zoom !== this.userZoom) {
       // A new font size (e.g. Cmd +/- in Ghostty) needs frames of a new pixel
       // size, and a page that was fitted to the old width must be fitted again
-      return this.rebuildPage({ fit: true })
+      return this.rebuildPage({ fit: true, ratioX })
     }
-    await this.page.setViewportSize(viewportFor(size, this.effectiveScale))
+    await this.page.setViewportSize(this.viewport)
     this.opts.output.write("\x1b[2J")
     const ratio = this.maxScroll > 0 ? this.scrollY / this.maxScroll : 0
     await this.fitWidth()
+    // Keep the relative sideways position at the new number of columns
+    await this.measure()
+    this.scrollCol = ratioX * this.maxScrollCol
     this.scrollTo(Math.round(ratio * this.maxScroll))
     await this.idle()
   }
@@ -451,6 +556,14 @@ export class Viewer {
     void this.redraw()
   }
 
+  /** Scroll sideways, on a page wider than the terminal (zoomed in above 100%). */
+  private scrollColBy(cols: number): void {
+    const col = Math.max(0, Math.min(this.scrollCol + cols, this.maxScrollCol))
+    if (col === this.scrollCol) return
+    this.scrollCol = col
+    void this.redraw()
+  }
+
   private async click(x: number, y: number): Promise<void> {
     // Hit-test the page as it is on screen, not mid-scroll
     await this.idle()
@@ -460,7 +573,7 @@ export class Viewer {
 
   /** The centre of a terminal cell (1-based), in CSS pixels of the viewport. */
   private cellToPage(x: number, y: number): [number, number] {
-    return [((x - 1 + 0.5) * this.size.cell.width) / this.effectiveScale, (y - 1 + 0.5) * this.rowHeight]
+    return [this.clipX + (x - 1 + 0.5) * this.colWidth, (y - 1 + 0.5) * this.rowHeight]
   }
 
   /**
@@ -524,7 +637,7 @@ export class Viewer {
             ([key, [px, py], scrollY]) => {
               // Find the caret where the page is scrolled to, without waiting
               // for the next frame (drawFrame scrolls to the same position)
-              if (window.scrollY !== scrollY) window.scrollTo(0, scrollY)
+              if (window.scrollY !== scrollY) window.scrollTo(window.scrollX, scrollY)
               const anchor = (window as unknown as Record<string, { node: Node; offset: number } | null>)[key]
               const caret = document.caretPositionFromPoint(px, py)
               if (!anchor || !caret) return false
@@ -664,6 +777,7 @@ export class Viewer {
       const kind = documentKind(path)
       if (kind && existsSync(path)) {
         this.history.push({ doc: this.doc!, scrollY: this.scrollY })
+        this.future = []
         // Images and PDFs are shown from their path; there is no text to read
         const source = BINARY_KINDS.includes(kind) ? "" : await readFile(path, "utf-8")
         return this.open({ source, path, basePath: dirname(path), kind }, fragment)
@@ -674,11 +788,22 @@ export class Viewer {
     await this.redraw()
   }
 
-  private async back(): Promise<void> {
-    const prev = this.history.pop()
-    if (!prev) return
-    await this.load(prev.doc)
-    this.scrollTo(prev.scrollY)
+  private back(): Promise<void> {
+    return this.travel(this.history, this.future)
+  }
+
+  private forward(): Promise<void> {
+    return this.travel(this.future, this.history)
+  }
+
+  /** Go to the last document of one history stack, leaving the current one on the other. */
+  private async travel(from: HistoryEntry[], to: HistoryEntry[]): Promise<void> {
+    const target = from.pop()
+    if (!target) return
+    if (this.doc) to.push({ doc: this.doc, scrollY: this.scrollY })
+    await this.load(target.doc)
+    this.scrollCol = 0
+    this.scrollTo(target.scrollY)
     await this.idle()
   }
 
@@ -721,18 +846,34 @@ export class Viewer {
     // Never capture while a GIF update is capturing from the same page
     await this.animating
     const requested = this.scrollY
-    const { scrollY, maxScroll } = await this.page.evaluate((y) => {
-      window.scrollTo(0, y)
-      return {
-        scrollY: window.scrollY,
-        maxScroll: Math.max(0, document.documentElement.scrollHeight - window.innerHeight),
-      }
-    }, requested)
+    this.scrollCol = Math.max(0, Math.min(this.scrollCol, this.maxScrollCol))
+    const left = this.scrollLeft
+    // The page scrolls sideways as far as it can by itself (content wider
+    // than the viewport); the rest is an offset into the viewport, below
+    const { scrollX, scrollY, maxScroll, pageWidth } = await this.page.evaluate(
+      ([x, y]) => {
+        window.scrollTo(x, y)
+        return {
+          scrollX: window.scrollX,
+          scrollY: window.scrollY,
+          maxScroll: Math.max(0, document.documentElement.scrollHeight - window.innerHeight),
+          pageWidth: document.documentElement.scrollWidth,
+        }
+      },
+      [left, requested] as const,
+    )
     this.maxScroll = maxScroll
+    this.pageWidth = pageWidth
     // Adopt the browser's clamped position, unless the user scrolled again meanwhile
     if (this.scrollY === requested) this.scrollY = scrollY
 
-    const png = new Uint8Array(await this.page.screenshot({ type: "png" }))
+    // A viewport wider than the terminal (zoomed in): capture only the columns scrolled to
+    const viewport = this.viewport
+    const width = this.size.cols * this.colWidth
+    const zoomedIn = viewport.width - width >= 1
+    this.clipX = zoomedIn ? Math.max(0, Math.min(left - scrollX, viewport.width - width)) : 0
+    const clip = zoomedIn ? { x: this.clipX, y: 0, width, height: viewport.height } : undefined
+    const png = new Uint8Array(await this.page.screenshot({ type: "png", clip }))
     // Show the new frame before deleting the old one, so nothing flickers
     const previous = this.imageId
     this.imageId = previous === 1 ? 2 : 1
@@ -767,20 +908,21 @@ export class Viewer {
     )
     // Cell size in CSS pixels; rectangles are widened to whole cells so the
     // captured frame lines up exactly with the cells it is drawn over
-    const cw = this.size.cell.width / this.effectiveScale
+    const cw = this.colWidth
     const ch = this.rowHeight
+    const sx = this.clipX
     this.animated = rects
       .map((r) => {
-        const col0 = Math.max(0, Math.floor(r.left / cw))
+        const col0 = Math.max(0, Math.floor((r.left - sx) / cw))
         const row0 = Math.max(0, Math.floor(r.top / ch))
-        const col1 = Math.min(this.size.cols, Math.ceil(r.right / cw))
+        const col1 = Math.min(this.size.cols, Math.ceil((r.right - sx) / cw))
         const row1 = Math.min(this.contentRows, Math.ceil(r.bottom / ch))
         return {
           col: col0 + 1,
           row: row0 + 1,
           cols: col1 - col0,
           rows: row1 - row0,
-          clip: { x: col0 * cw, y: row0 * ch, width: (col1 - col0) * cw, height: (row1 - row0) * ch },
+          clip: { x: sx + col0 * cw, y: row0 * ch, width: (col1 - col0) * cw, height: (row1 - row0) * ch },
         }
       })
       .filter((r) => r.cols > 0 && r.rows > 0)
@@ -838,26 +980,44 @@ export class Viewer {
 
   private statusLeft(): string {
     const title = this.doc?.path ? basename(this.doc.path) : "stdin"
-    const back = this.history.length > 0 ? "  [h] back" : ""
     if (this.message) return `${title}  ${this.message}`
     if (this.hoverHref) return `${title}  ${readableUrl(this.hoverHref)}`
-    return `${title}${back}`
+    return title
   }
 
   private statusRight(): string {
     const pos = this.maxScroll <= 0 ? "All" : this.scrollY <= 0 ? "Top" : this.scrollY >= this.maxScroll ? "Bot" : `${Math.round((this.scrollY / this.maxScroll) * 100)}%`
     const zoom = this.zoom === 1 ? "" : `${Math.round(this.zoom * 100)}%  `
+    let right = `${zoom}${pos}`
     // A message or a hovered link's target takes the room of the key help
-    return this.message || this.hoverHref
-      ? `${zoom}${pos}`
-      : `${zoom}${pos}  [j/k] scroll  [+/-] zoom  [click] link  [drag] copy  [q] quit`
+    if (this.message || this.hoverHref) return right
+    // Only the keys that do something now
+    const hints = [
+      ...(this.history.length > 0 ? ["[B] back"] : []),
+      ...(this.future.length > 0 ? ["[N] forward"] : []),
+      "[+/-] zoom",
+      ...(!this.doc?.kind || this.doc.kind === "markdown" ? ["[s] save html"] : []),
+      "[q] quit",
+      "[click] link",
+      "[drag] copy",
+    ]
+    // As many as fit next to the title, in this order
+    const room = this.size.cols - 2 - this.statusLeft().length - 1
+    for (const hint of hints) {
+      if (right.length + 2 + hint.length > room) break
+      right += `  ${hint}`
+    }
+    return right
   }
 }
 
-/** The CSS viewport that fills cols x (rows - 1) cells at the given scale. */
-export function viewportFor(size: ViewerSize, scale: number): { width: number; height: number } {
+/**
+ * The CSS viewport that fills cols x (rows - 1) cells at the given scale, or
+ * widthFactor times as many columns for a page that scrolls sideways.
+ */
+export function viewportFor(size: ViewerSize, scale: number, widthFactor = 1): { width: number; height: number } {
   return {
-    width: Math.max(1, Math.round((size.cols * size.cell.width) / scale)),
+    width: Math.max(1, Math.round((Math.max(1, widthFactor) * size.cols * size.cell.width) / scale)),
     height: Math.max(1, Math.round((Math.max(1, size.rows - 1) * size.cell.height) / scale)),
   }
 }

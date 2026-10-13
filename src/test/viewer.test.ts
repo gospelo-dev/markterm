@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { dispose } from "../render/screenshot.js"
-import { AUTOSCROLL_INTERVAL_MS, Viewer, viewportFor, type ViewerSize } from "../viewer/viewer.js"
+import { AUTOSCROLL_INTERVAL_MS, terminalScale, Viewer, viewportFor, type ViewerSize } from "../viewer/viewer.js"
 
 const dir = mkdtempSync(join(tmpdir(), "markterm-viewer-"))
 const filler = Array.from({ length: 40 }, (_, i) => `Paragraph ${i} with some words.`).join("\n\n")
@@ -227,8 +227,9 @@ describe("Viewer", () => {
     output.length = 0
     await viewer.handle({ type: "key", key: "+" })
     expect(viewer.zoomLevel).toBe(1.1)
-    // Fewer CSS pixels across, each rendered at more device pixels
-    expect(page().viewportSize()).toEqual({ width: Math.round(800 / 1.1), height: Math.round(460 / 1.1) })
+    // The same layout width, each CSS pixel rendered at more device pixels:
+    // the page is now wider than the terminal and scrolls sideways
+    expect(page().viewportSize()).toEqual({ width: 800, height: Math.round(460 / 1.1) })
     expect(await page().evaluate(() => window.devicePixelRatio)).toBeCloseTo(1.1)
     expect(output.join("")).toContain("110%")
     // The frame still fills the same cells
@@ -270,7 +271,7 @@ describe("Viewer", () => {
       y: Math.floor((c.y * 1.5) / size.cell.height) + 1,
     })
     expect(viewer.currentPath).toBe(B)
-    await viewer.handle({ type: "key", key: "h" })
+    await viewer.handle({ type: "key", key: "B" })
     await viewer.setZoom(1)
   }, 30_000)
 
@@ -951,5 +952,227 @@ ${"<p>filler</p>".repeat(80)}
     expect(page.viewportSize()).toEqual({ width: 600, height: 380 })
     expect(output.join("")).toContain("\x1b[2J")
     expect(output.join("")).toContain("c=60,r=19,C=1")
+  }, 30_000)
+
+  test("B goes back and N forward again, until a link is followed", async () => {
+    await open(A)
+    await click('a[href$="b.md"]')
+    expect(viewer.currentPath).toBe(B)
+    await viewer.handle({ type: "key", key: "B" })
+    expect(viewer.currentPath).toBe(A)
+    await viewer.handle({ type: "key", key: "N" })
+    expect(viewer.currentPath).toBe(B)
+    // Nothing further forward
+    await viewer.handle({ type: "key", key: "N" })
+    expect(viewer.currentPath).toBe(B)
+    // Following a link starts a new branch: there is nothing to go forward to
+    await viewer.handle({ type: "key", key: "B" })
+    await click('a[href$="b.md"]')
+    await viewer.handle({ type: "key", key: "N" })
+    expect(viewer.currentPath).toBe(B)
+    await viewer.handle({ type: "key", key: "B" })
+    expect(viewer.currentPath).toBe(A)
+  }, 30_000)
+
+  test("the status line shows the keys that apply now, as many as fit", async () => {
+    await viewer.resize(size)
+    await open(A)
+    output.length = 0
+    await click('a[href$="b.md"]')
+    expect(output.join("")).toContain("  [B] back  [+/-] zoom  [s] save html  [q] quit  [click] link ")
+    output.length = 0
+    await viewer.handle({ type: "key", key: "B" })
+    expect(output.join("")).toContain("[N] forward")
+    // A narrow terminal keeps the first keys instead of dropping them all
+    output.length = 0
+    await viewer.resize({ ...size, cols: 40 })
+    expect(output.join("")).toContain("[N] forward")
+    expect(output.join("")).not.toContain("[drag] copy")
+    await viewer.resize(size)
+  }, 30_000)
+
+  test("a Markdown page with content wider than the terminal stays at 100% and scrolls sideways", async () => {
+    const M = join(dir, "overflow.md")
+    writeFileSync(
+      M,
+      `# Wide\n\n<div style="width:1200px;height:40px">wide</div>\n\n` +
+        `<a href="b.md" style="position:absolute;left:1100px;top:0;width:60px;height:40px">far</a>\n`,
+    )
+    const page = () => (viewer as unknown as { page: import("playwright").Page }).page
+    output.length = 0
+    await open(M)
+    // Not zoomed out to fit, as an HTML page would be
+    expect(viewer.zoomLevel).toBe(1)
+    expect(page().viewportSize()!.width).toBe(800)
+    for (let i = 0; i < 100; i++) await viewer.handle({ type: "key", key: "right" })
+    await viewer.idle()
+    // The page itself is scrolled, to its right edge
+    const left = await page().evaluate(() => window.scrollX)
+    expect(left).toBeGreaterThanOrEqual(400)
+    expect(viewer.scrollLeft).toBeCloseTo(left, 0)
+    // The link's centre is at 1130 CSS px of the page
+    await viewer.handle({ type: "click", x: Math.floor((1130 - left) / 10) + 1, y: 1 })
+    expect(viewer.currentPath).toBe(B)
+    await viewer.handle({ type: "key", key: "B" })
+    expect(viewer.currentPath).toBe(M)
+    // h scrolls on this page instead of going back
+    await viewer.handle({ type: "key", key: "right" })
+    await viewer.handle({ type: "key", key: "h" })
+    await viewer.idle()
+    expect(viewer.currentPath).toBe(M)
+    expect(viewer.scrollLeft).toBe(0)
+  }, 30_000)
+
+  test("right and l do nothing on a page as wide as the terminal", async () => {
+    await open(A)
+    await viewer.handle({ type: "key", key: "right" })
+    await viewer.handle({ type: "key", key: "l" })
+    await viewer.handle({ type: "wheel", direction: "right", x: 1, y: 1 })
+    await viewer.idle()
+    expect(viewer.scrollLeft).toBe(0)
+  }, 30_000)
+})
+
+describe("Viewer without a given scale", () => {
+  test("the page's text is as large as the terminal's, also after the terminal's font changes", async () => {
+    // A 12 px wide cell is a 20 px font: 16 CSS px at a scale of 1.25
+    expect(terminalScale({ width: 12, height: 24 })).toBeCloseTo(1.25, 10)
+    const auto = await Viewer.create({
+      output: { write: () => {} },
+      size: { cols: 80, rows: 24, cell: { width: 12, height: 24 } },
+      render: { highlight: false },
+      openExternal: () => {},
+    })
+    const page = () => (auto as unknown as { page: import("playwright").Page }).page
+    const fontPx = () =>
+      page().evaluate(() => parseFloat(getComputedStyle(document.body).fontSize) * window.devicePixelRatio)
+    try {
+      await auto.open({ source: "# T\n\ntext\n", basePath: dir })
+      expect(page().viewportSize()).toEqual({ width: 768, height: Math.round((23 * 24) / 1.25) })
+      expect(await fontPx()).toBeCloseTo(20, 5)
+      // A larger terminal font (e.g. Cmd + in Ghostty)
+      await auto.resize({ cols: 64, rows: 20, cell: { width: 15, height: 30 } })
+      expect(await fontPx()).toBeCloseTo(25, 5)
+      expect(auto.zoomLevel).toBe(1)
+    } finally {
+      await auto.close()
+    }
+  }, 30_000)
+})
+
+describe("Viewer wider than the terminal", () => {
+  // As the CLI does for -z 150
+  let wide: Viewer
+  let frames: string[]
+  const W = join(dir, "sideways.html")
+  const pageOf = () => (wide as unknown as { page: import("playwright").Page }).page
+  // 80 columns show 533 of the page's 800 CSS px
+  const maxLeft = 800 - 800 / 1.5
+
+  beforeAll(async () => {
+    writeFileSync(
+      W,
+      `<!DOCTYPE html><html><body style="margin:0"><div style="height:2000px">left</div>` +
+        `<a href="a.md" style="position:absolute;left:700px;top:20px;width:60px;height:20px">far</a></body></html>`,
+    )
+    frames = []
+    wide = await Viewer.create({
+      output: { write: (s: string) => frames.push(s) },
+      size,
+      scale: 1,
+      zoom: 1.5,
+      render: { highlight: false },
+      openExternal: () => {},
+    })
+    await wide.open({ source: readFileSync(W, "utf-8"), path: W, basePath: dir, kind: "html" })
+  })
+
+  afterAll(async () => {
+    await wide.close()
+  })
+
+  test("the page keeps its 100% layout width, and the frame shows the terminal's part of it", async () => {
+    expect(viewportFor(size, 1.5, 1.5)).toEqual({ width: 800, height: 307 })
+    expect(pageOf().viewportSize()).toEqual({ width: 800, height: 307 })
+    // Not fitted to the width: the overflow is scrolled to instead
+    expect(wide.zoomLevel).toBe(1.5)
+    expect(wide.scrollLeft).toBe(0)
+    const frame = frames.join("")
+    expect(frame).toContain("150%")
+    expect(frame).toContain("c=80,r=23,C=1")
+    // Saving is for Markdown; this is an HTML page
+    expect(frame).not.toContain("[s] save html")
+    // The captured frame is as wide as the terminal in pixels, not as the page
+    const png = Buffer.from(/\x1b_Ga=T[^;]*;([^\x1b]*)\x1b\\/.exec(frame)![1], "base64")
+    expect(png.readUInt32BE(16)).toBe(800)
+  }, 30_000)
+
+  test("right, l and the wheel scroll sideways up to the page's right edge", async () => {
+    await wide.handle({ type: "key", key: "right" })
+    await wide.idle()
+    // 4 columns of 10 device px at scale 1.5
+    expect(wide.scrollLeft).toBeCloseTo(40 / 1.5, 5)
+    await wide.handle({ type: "key", key: "l" })
+    await wide.handle({ type: "wheel", direction: "right", x: 1, y: 1 })
+    await wide.idle()
+    expect(wide.scrollLeft).toBeCloseTo(140 / 1.5, 5)
+    for (let i = 0; i < 20; i++) await wide.handle({ type: "wheel", direction: "right", x: 1, y: 1 })
+    await wide.idle()
+    expect(wide.scrollLeft).toBeCloseTo(maxLeft, 5)
+    // Scrolling down still works, and keeps the sideways position
+    await wide.handle({ type: "key", key: "j" })
+    await wide.idle()
+    expect(wide.scrollTop).toBeGreaterThan(0)
+    expect(wide.scrollLeft).toBeCloseTo(maxLeft, 5)
+    await wide.handle({ type: "key", key: "g" })
+    await wide.idle()
+  }, 30_000)
+
+  test("left scrolls back instead of going back in the history", async () => {
+    await wide.handle({ type: "key", key: "left" })
+    await wide.handle({ type: "wheel", direction: "left", x: 1, y: 1 })
+    await wide.idle()
+    expect(wide.scrollLeft).toBeCloseTo(maxLeft - 100 / 1.5, 5)
+    expect(wide.currentPath).toBe(W)
+  }, 30_000)
+
+  test("zooming and resizing keep the relative sideways position", async () => {
+    for (let i = 0; i < 20; i++) await wide.handle({ type: "key", key: "right" })
+    await wide.idle()
+    // + and - change the zoom the viewer started at: more of the page is off screen,
+    // and the same part of it stays at the left edge
+    await wide.handle({ type: "key", key: "+" })
+    expect(wide.zoomLevel).toBe(1.75)
+    expect(pageOf().viewportSize()!.width).toBe(800)
+    expect(wide.scrollLeft).toBeCloseTo(maxLeft, 5)
+    // At 100% and below the page fits again
+    for (let i = 0; i < 4; i++) await wide.handle({ type: "key", key: "-" })
+    expect(wide.zoomLevel).toBe(1)
+    expect(wide.scrollLeft).toBe(0)
+    // 0 goes back to the starting zoom
+    await wide.handle({ type: "key", key: "0" })
+    expect(wide.zoomLevel).toBe(1.5)
+    for (let i = 0; i < 20; i++) await wide.handle({ type: "key", key: "right" })
+    await wide.idle()
+    expect(wide.scrollLeft).toBeCloseTo(maxLeft, 5)
+    await wide.resize({ ...size, cols: 100 })
+    expect(wide.scrollLeft).toBeCloseTo(1000 - 1000 / 1.5, 0)
+    await wide.resize(size)
+    expect(wide.scrollLeft).toBeCloseTo(maxLeft, 0)
+  }, 30_000)
+
+  test("a click is hit-tested at the sideways position, and h goes back", async () => {
+    // The link's centre is at 730 CSS px; the frame starts at maxLeft
+    const x = Math.floor((730 - wide.scrollLeft) / (10 / 1.5)) + 1
+    const y = Math.floor(30 / (20 / 1.5)) + 1
+    await wide.handle({ type: "click", x, y })
+    expect(wide.currentPath).toBe(A)
+    // A new document starts at the left
+    expect(wide.scrollLeft).toBe(0)
+    // h scrolls left on this page (already at the left here); B goes back
+    await wide.handle({ type: "key", key: "h" })
+    expect(wide.currentPath).toBe(A)
+    await wide.handle({ type: "key", key: "B" })
+    expect(wide.currentPath).toBe(W)
   }, 30_000)
 })
