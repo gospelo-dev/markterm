@@ -2,6 +2,21 @@
 
 All notable changes to markterm are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.7.0 - 2026-10-25
+
+### Added
+
+- Viewer: press `f` to search the document. The status line shows `Search: /keyword` while you type, with the number of matches on the right, and every match is highlighted. `Enter` confirms and scrolls to the first match, `Escape` cancels and restores the previous search, and `Backspace` deletes a character. The search ignores case and can match text across inline markup (links, emphasis, code)
+- Search is kept across reloads, zoom changes and window resizes, and is cleared when the viewer opens another document
+
+### Changed
+
+- Viewer: `f` no longer pages down. Use `Space` or `PgDn` to page down, and `b` or `PgUp` to page up
+
+### Fixed
+
+- Viewer: the status line counts East Asian wide characters as two cells, so Japanese text in the status line no longer overflows and wraps the bottom row
+
 ## 0.6.1 - 2026-10-14
 
 ### Fixed
