@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { InputParser } from "../viewer/input.js"
 import { RESIZE_SETTLE_MS, settle } from "../viewer/index.js"
 import {
+  cellWidth,
   CELL_SIZE_QUERIES,
   CLIPBOARD_MAX,
   copyToClipboard,
@@ -184,6 +185,16 @@ describe("screen", () => {
   test("statusLine fits the text to the width and drops the right side first", () => {
     expect(statusLine(24, 20, "doc.md", "Top")).toBe("\x1b[24;1H\x1b[2K\x1b[7m doc.md         Top \x1b[0m")
     expect(statusLine(24, 12, "doc.md", "a long right side")).toBe("\x1b[24;1H\x1b[2K\x1b[7m doc.md     \x1b[0m")
+  })
+
+  test("statusLine counts Japanese text as two cells so the row never overflows", () => {
+    const visible = (s: string) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")
+    for (const cols of [10, 20, 40, 80]) {
+      const line = visible(statusLine(24, cols, "文書.md  Search: /docs█", "1件  Enter:確定 Esc:取消"))
+      expect(cellWidth(line)).toBeLessThanOrEqual(cols)
+    }
+    expect(visible(statusLine(24, 40, "文書.md", "Enter:確定 Esc:取消"))).toContain("Esc:取消")
+    expect(cellWidth("文書")).toBe(4)
   })
 
   test("queryKittyGraphics: OK before the DA reply means supported", async () => {

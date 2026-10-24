@@ -106,6 +106,46 @@ describe("Viewer", () => {
     expect(viewer.scrollTop).toBe(bottom)
   }, 30_000)
 
+  test("f searches, counts matches, and highlights them", async () => {
+    await open(A)
+    await viewer.handle({ type: "key", key: "g" })
+    const start = viewer.scrollTop
+    output.length = 0
+
+    await viewer.handle({ type: "key", key: "f" })
+    expect(viewer.scrollTop).toBe(start)
+    for (const key of "paragraph") await viewer.handle({ type: "key", key })
+    await viewer.idle()
+
+    const page = (viewer as unknown as { page: import("playwright").Page }).page
+    expect(await page.locator(".markterm-search-match").count()).toBe(40)
+    expect(output.join("")).toContain("Search: /paragraph")
+    expect(output.join("")).toContain("40件")
+
+    await viewer.handle({ type: "key", key: "enter" })
+    await viewer.idle()
+    expect(await page.locator(".markterm-search-match").count()).toBe(40)
+    expect(output.join("")).toContain("40件")
+    await open(A)
+  }, 30_000)
+
+  test("search supports backspace and escape restores the previous result", async () => {
+    await open(A)
+    await viewer.handle({ type: "key", key: "f" })
+    for (const key of "words") await viewer.handle({ type: "key", key })
+    await viewer.handle({ type: "key", key: "enter" })
+    await viewer.idle()
+
+    const page = (viewer as unknown as { page: import("playwright").Page }).page
+    expect(await page.locator(".markterm-search-match").count()).toBe(40)
+    await viewer.handle({ type: "key", key: "f" })
+    await viewer.handle({ type: "key", key: "backspace" })
+    await viewer.handle({ type: "key", key: "escape" })
+    await viewer.idle()
+    expect(await page.locator(".markterm-search-match").count()).toBe(40)
+    await open(A)
+  }, 30_000)
+
   test("a burst of wheel events collapses into a few frames and stops at the latest position", async () => {
     await viewer.handle({ type: "key", key: "g" })
     await viewer.idle()

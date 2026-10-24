@@ -58,12 +58,51 @@ export function copyToClipboard(text: string): string | null {
   return `\x1b]52;c;${b64}\x1b\\`
 }
 
-/** Draw a one-line status bar on the given row, in reverse video, fitted to cols. */
+/** Whether a code point takes two terminal cells (East Asian wide and fullwidth, emoji). */
+function isWide(cp: number): boolean {
+  return (
+    (cp >= 0x1100 && cp <= 0x115f) ||
+    (cp >= 0x2e80 && cp <= 0xa4cf) ||
+    (cp >= 0xac00 && cp <= 0xd7a3) ||
+    (cp >= 0xf900 && cp <= 0xfaff) ||
+    (cp >= 0xfe30 && cp <= 0xfe4f) ||
+    (cp >= 0xff00 && cp <= 0xff60) ||
+    (cp >= 0xffe0 && cp <= 0xffe6) ||
+    (cp >= 0x1f300 && cp <= 0x1faff) ||
+    (cp >= 0x20000 && cp <= 0x3fffd)
+  )
+}
+
+/** How many terminal cells the text takes: wide characters take two. */
+export function cellWidth(text: string): number {
+  let width = 0
+  for (const ch of text) width += isWide(ch.codePointAt(0)!) ? 2 : 1
+  return width
+}
+
+/** The longest prefix of text that fits in max cells. */
+function fitCells(text: string, max: number): string {
+  let out = ""
+  let width = 0
+  for (const ch of text) {
+    const w = isWide(ch.codePointAt(0)!) ? 2 : 1
+    if (width + w > max) break
+    out += ch
+    width += w
+  }
+  return out
+}
+
+/**
+ * Draw a one-line status bar on the given row, in reverse video, fitted to
+ * cols. Widths are counted in terminal cells, so Japanese text does not
+ * overflow the row (an overflow wraps and scrolls the screen).
+ */
 export function statusLine(row: number, cols: number, left: string, right: string): string {
   const width = Math.max(0, cols - 2)
-  const r = right.length >= width ? "" : right
-  const l = left.slice(0, Math.max(0, width - r.length - 1))
-  const gap = Math.max(1, width - l.length - r.length)
+  const r = cellWidth(right) >= width ? "" : right
+  const l = fitCells(left, Math.max(0, width - cellWidth(r) - 1))
+  const gap = Math.max(1, width - cellWidth(l) - cellWidth(r))
   return `\x1b[${row};1H\x1b[2K\x1b[7m ${l}${" ".repeat(gap)}${r} \x1b[0m`
 }
 

@@ -8,7 +8,7 @@ import { buildHtml } from "../render/template.js"
 import { pdfPage } from "./pdf.js"
 import { getBrowser, inlineLocalImages, waitForMermaid } from "../render/screenshot.js"
 import type { InputEvent } from "./input.js"
-import { copyToClipboard, deleteImage, placeImage, pointerShape, statusLine, type CellSize } from "./screen.js"
+import { cellWidth, copyToClipboard, deleteImage, placeImage, pointerShape, statusLine, type CellSize } from "./screen.js"
 
 const MARKDOWN_EXT = /\.(md|markdown)$/i
 
@@ -147,6 +147,8 @@ export type ViewerOptions = {
 type Link = { raw: string; href: string }
 
 type HistoryEntry = { doc: ViewerDocument; scrollY: number }
+type SearchMode = "idle" | "input" | "active"
+type SearchState = { mode: SearchMode; query: string; count: number }
 
 /**
  * A full-screen Markdown and HTML viewer: renders the document in headless
@@ -197,6 +199,10 @@ export class Viewer {
   private animating: Promise<void> | null = null
   private imageId = 0
   private message = ""
+  private searchMode: SearchMode = "idle"
+  private searchQuery = ""
+  private searchCount = 0
+  private searchBefore: SearchState = { mode: "idle", query: "", count: 0 }
   private dirty = false
   private drawing: Promise<void> | null = null
 
@@ -277,6 +283,7 @@ export class Viewer {
 
   async open(doc: ViewerDocument, fragment?: string): Promise<void> {
     await this.idle()
+    this.resetSearch()
     // Each document starts at the user's zoom; an HTML page then shrinks if it is too wide
     if (this.zoom !== this.userZoom) {
       this.zoom = this.userZoom
@@ -309,7 +316,7 @@ export class Viewer {
       if (this.zoom - fitted < 0.005) return
       this.zoom = fitted
       await this.replacePage()
-      await this.load(this.doc)
+      await this.load(this.doc, true)
     }
   }
 
@@ -317,7 +324,7 @@ export class Viewer {
    * Render a document into the page without drawing a frame, so the caller
    * can set the scroll position first. Leaves scrollY at 0 and maxScroll set.
    */
-  private async load(doc: ViewerDocument): Promise<void> {
+  private async load(doc: ViewerDocument, preserveSearch = false): Promise<void> {
     // Never replace the page while a frame is being captured from it
     await this.idle()
     // GIF positions belong to the old page; the next frame finds them again
@@ -350,9 +357,11 @@ export class Viewer {
       await inlineLocalImages(this.page, doc.basePath)
       await waitForMermaid(this.page)
     }
+    await this.ensureSearchStyle()
     this.doc = doc
     this.scrollY = 0
     await this.measure()
+    if (preserveSearch && this.searchQuery) await this.updateSearch(this.searchQuery)
   }
 
   /** Read how far the page scrolls down, and how wide it is. */
@@ -370,6 +379,10 @@ export class Viewer {
     // Pointer motion must not clear a message; it only updates the hover state
     if (event.type === "move") return this.hover(event.x, event.y)
     this.message = ""
+    if (this.searchMode === "input") {
+      if (event.type !== "key") return
+      return this.handleSearchKey(event.key)
+    }
     if (event.type === "wheel") {
       if (event.direction === "left" || event.direction === "right") {
         return this.scrollColBy(event.direction === "right" ? 6 : -6)
@@ -394,9 +407,10 @@ export class Viewer {
       case "up":
         return this.scrollBy(-line)
       case " ":
-      case "f":
       case "pagedown":
         return this.scrollBy(pageStep)
+      case "f":
+        return this.beginSearch()
       case "b":
       case "pageup":
         return this.scrollBy(-pageStep)
@@ -458,6 +472,134 @@ export class Viewer {
     await this.redraw()
   }
 
+  /** Start editing the current query without losing the active result. */
+  private async beginSearch(): Promise<void> {
+    this.searchBefore = { mode: this.searchMode, query: this.searchQuery, count: this.searchCount }
+    this.searchMode = "input"
+    await this.redraw()
+  }
+
+  /** Handle keys while the status line is being used as the search prompt. */
+  private async handleSearchKey(key: string): Promise<"quit" | void> {
+    if (key === "ctrl-c") return "quit"
+    if (key === "escape") {
+      const previous = this.searchBefore
+      this.searchMode = previous.mode
+      this.searchQuery = previous.query
+      this.searchCount = previous.count
+      await this.updateSearch(this.searchQuery)
+      return this.redraw()
+    }
+    if (key === "enter") {
+      if (!this.searchQuery) {
+        this.searchMode = "idle"
+        this.searchCount = 0
+        await this.updateSearch("")
+        return this.redraw()
+      }
+      this.searchMode = "active"
+      const result = await this.updateSearch(this.searchQuery)
+      if (result.firstTop !== null) this.scrollY = Math.max(0, Math.min(result.firstTop - 8, this.maxScroll))
+      return this.redraw()
+    }
+    if (key === "backspace") {
+      this.searchQuery = [...this.searchQuery].slice(0, -1).join("")
+    } else if (key.length === 1) {
+      this.searchQuery += key
+    } else {
+      return
+    }
+    await this.updateSearch(this.searchQuery)
+    return this.redraw()
+  }
+
+  private resetSearch(): void {
+    this.searchMode = "idle"
+    this.searchQuery = ""
+    this.searchCount = 0
+    this.searchBefore = { mode: "idle", query: "", count: 0 }
+  }
+
+  /** Add viewer-only highlight styling to pages, including user-supplied HTML. */
+  private async ensureSearchStyle(): Promise<void> {
+    await this.page.evaluate(() => {
+      if (document.getElementById("markterm-search-style")) return
+      const style = document.createElement("style")
+      style.id = "markterm-search-style"
+      style.textContent =
+        ".markterm-search-match { background: #facc15 !important; color: #111827 !important; border-radius: 2px; }"
+      document.head.appendChild(style)
+    })
+  }
+
+  /** Replace matching text with viewer-only spans and return the first match position. */
+  private async updateSearch(query: string): Promise<{ count: number; firstTop: number | null }> {
+    const result = await this.page.evaluate((needle) => {
+      const unwrap = () => {
+        for (const mark of document.querySelectorAll(".markterm-search-match")) {
+          mark.replaceWith(document.createTextNode(mark.textContent ?? ""))
+        }
+        document.body.normalize()
+      }
+      unwrap()
+      if (!needle) return { count: 0, firstTop: null }
+
+      const nodes: Text[] = []
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+      while (walker.nextNode()) {
+        const node = walker.currentNode as Text
+        if (node.parentElement?.closest("script, style, noscript")) continue
+        if (node.nodeValue) nodes.push(node)
+      }
+      const text = nodes.map((node) => node.nodeValue ?? "").join("")
+      const lowerText = text.toLocaleLowerCase()
+      const lowerNeedle = needle.toLocaleLowerCase()
+      const matches: { start: number; end: number }[] = []
+      for (let start = 0; ; ) {
+        const found = lowerText.indexOf(lowerNeedle, start)
+        if (found < 0) break
+        matches.push({ start: found, end: found + lowerNeedle.length })
+        start = found + Math.max(1, lowerNeedle.length)
+      }
+
+      const rangesByNode = new Map<Text, { start: number; end: number }[]>()
+      let offset = 0
+      for (const node of nodes) {
+        const nodeStart = offset
+        const nodeEnd = offset + (node.nodeValue?.length ?? 0)
+        const ranges = matches
+          .filter((match) => match.start < nodeEnd && match.end > nodeStart)
+          .map((match) => ({
+            start: Math.max(match.start, nodeStart) - nodeStart,
+            end: Math.min(match.end, nodeEnd) - nodeStart,
+          }))
+        if (ranges.length) rangesByNode.set(node, ranges)
+        offset = nodeEnd
+      }
+
+      for (const [node, ranges] of rangesByNode) {
+        const source = node.nodeValue ?? ""
+        const fragment = document.createDocumentFragment()
+        let cursor = 0
+        for (const range of ranges.sort((a, b) => a.start - b.start)) {
+          if (range.start > cursor) fragment.append(source.slice(cursor, range.start))
+          const mark = document.createElement("span")
+          mark.className = "markterm-search-match"
+          mark.textContent = source.slice(range.start, range.end)
+          fragment.append(mark)
+          cursor = range.end
+        }
+        if (cursor < source.length) fragment.append(source.slice(cursor))
+        node.replaceWith(fragment)
+      }
+
+      const first = document.querySelector<HTMLElement>(".markterm-search-match")
+      return { count: matches.length, firstTop: first ? first.getBoundingClientRect().top + window.scrollY : null }
+    }, query)
+    this.searchCount = result.count
+    return result
+  }
+
   /** Change the zoom, keeping the same relative position in the document. */
   /**
    * Set the zoom the user asked for (+, -, 0). It is kept as asked even if the
@@ -500,7 +642,7 @@ export class Viewer {
     if (opts.fit) this.zoom = this.userZoom
     await this.replacePage()
     if (!this.doc) return
-    await this.load(this.doc)
+    await this.load(this.doc, true)
     if (opts.fit) await this.fitWidth()
     if (opts.ratioX !== undefined) this.scrollCol = opts.ratioX * this.maxScrollCol
     this.scrollTo(Math.round(ratio * this.maxScroll))
@@ -801,6 +943,7 @@ export class Viewer {
     const target = from.pop()
     if (!target) return
     if (this.doc) to.push({ doc: this.doc, scrollY: this.scrollY })
+    this.resetSearch()
     await this.load(target.doc)
     this.scrollCol = 0
     this.scrollTo(target.scrollY)
@@ -812,7 +955,7 @@ export class Viewer {
     if (!this.doc?.path) return
     const y = this.scrollY
     const source = this.doc.kind && BINARY_KINDS.includes(this.doc.kind) ? "" : await readFile(this.doc.path, "utf-8")
-    await this.load({ ...this.doc, source })
+    await this.load({ ...this.doc, source }, true)
     this.scrollTo(y)
     await this.idle()
   }
@@ -980,6 +1123,8 @@ export class Viewer {
 
   private statusLeft(): string {
     const title = this.doc?.path ? basename(this.doc.path) : "stdin"
+    if (this.searchMode === "input") return `${title}  Search: /${this.searchQuery}\u2588`
+    if (this.searchMode === "active") return `${title}  /${this.searchQuery}`
     if (this.message) return `${title}  ${this.message}`
     if (this.hoverHref) return `${title}  ${readableUrl(this.hoverHref)}`
     return title
@@ -988,6 +1133,8 @@ export class Viewer {
   private statusRight(): string {
     const pos = this.maxScroll <= 0 ? "All" : this.scrollY <= 0 ? "Top" : this.scrollY >= this.maxScroll ? "Bot" : `${Math.round((this.scrollY / this.maxScroll) * 100)}%`
     const zoom = this.zoom === 1 ? "" : `${Math.round(this.zoom * 100)}%  `
+    if (this.searchMode === "input") return `${zoom}${this.searchCount}件  Enter:確定 Esc:取消`
+    if (this.searchMode === "active") return `${zoom}${this.searchCount}件  ${pos}`
     let right = `${zoom}${pos}`
     // A message or a hovered link's target takes the room of the key help
     if (this.message || this.hoverHref) return right
@@ -1002,9 +1149,9 @@ export class Viewer {
       "[drag] copy",
     ]
     // As many as fit next to the title, in this order
-    const room = this.size.cols - 2 - this.statusLeft().length - 1
+    const room = this.size.cols - 2 - cellWidth(this.statusLeft()) - 1
     for (const hint of hints) {
-      if (right.length + 2 + hint.length > room) break
+      if (cellWidth(right) + 2 + cellWidth(hint) > room) break
       right += `  ${hint}`
     }
     return right
