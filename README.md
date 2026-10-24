@@ -105,7 +105,9 @@ The viewer renders the document in headless Chromium and shows the part that fit
 | Keys | Action |
 |------|--------|
 | `j` / `k`, `Up` / `Down`, mouse wheel | Scroll |
-| `Space` / `b`, `PgDn` / `PgUp` | Page down / up |
+| `Space`, `PgDn` | Page down |
+| `b`, `PgUp` | Page up |
+| `f` | Search the document and highlight matches |
 | `g` / `G`, `Home` / `End` | Top / bottom |
 | `h` / `l`, `Left` / `Right`, sideways wheel, `Shift` + wheel | Scroll sideways, when the page is wider than the terminal |
 | Click | Follow a link |
@@ -116,6 +118,8 @@ The viewer renders the document in headless Chromium and shows the part that fit
 | `r` | Reload the file from disk |
 | `s` / `p` | Save as HTML / PNG (Markdown only) |
 | `q`, `Ctrl-C` | Quit |
+
+Press `f` to enter search, type a keyword, and press `Enter` to keep the matches highlighted. The match count appears in the status line; `Escape` cancels the search.
 
 - `h` / `j` / `k` / `l` are left / down / up / right, as in vim, and the arrow keys do the same.
 - On a page that is not wider than the terminal there is nothing to scroll sideways: `l` and `Right` do nothing, and `h` and `Left` go back, as they did in earlier versions.

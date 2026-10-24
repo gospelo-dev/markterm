@@ -122,7 +122,8 @@ Environment (command-line options take precedence):
   MARKTERM_CODE_FONT   Default code font, like --code-font
 
 Viewer keys:
-  j/k, arrows, wheel   Scroll            space/b, PgDn/PgUp  Page down/up
+  j/k, arrows, wheel   Scroll            space/PgDn          Page down
+  b/PgUp               Page up            f                  Search (Enter/Esc)
   g/G, Home/End        Top/bottom        click               Follow a link
   B, h, Left, Backspace  Back            r                   Reload the file
   N                    Forward

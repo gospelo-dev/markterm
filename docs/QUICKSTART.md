@@ -62,7 +62,9 @@ markterm document.md
 | Keys | Action |
 |------|--------|
 | `j` / `k`, arrows, mouse wheel | Scroll |
-| `Space` / `b` | Page down / up |
+| `Space` | Page down |
+| `b` | Page up |
+| `f` | Search and highlight matches |
 | `g` / `G` | Top / bottom |
 | Click | Follow a link (`.md`, `.html`, images and `.pdf` open in the viewer) |
 | `h` / `l`, `Left` / `Right` | Scroll sideways, when the page is wider than the terminal |
@@ -71,6 +73,8 @@ markterm document.md
 | `r` | Reload the file |
 | `s` / `p` | Save as HTML / PNG |
 | `q` | Quit |
+
+Press `f` to search. Type a keyword and press `Enter` to highlight matches; the count appears in the status line. Press `Escape` to cancel.
 
 At 100% the page's text is as large as your terminal's own text. `-z` sets the zoom to start at, and `+` / `-` change it from there:
 
