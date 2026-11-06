@@ -201,7 +201,8 @@ Animated GIFs and WebPs on screen play at up to 10 frames per second. Only the i
 -i, --image                    Print one inline image instead of opening the viewer
 -s, --scale <auto|factor>      Device scale factor passed to Chromium. auto: the viewer matches
                                the terminal's font size, image mode uses 2 (default: auto)
-    --mermaid <version>        MermaidJS version loaded from jsDelivr (default: 11.16.0)
+    --mermaid <version>        MermaidJS version loaded from jsDelivr (default: 11.16.0). Diagrams with
+                               "layout: elk" also load the ELK layout (see MermaidJS Support)
 -z, --zoom <percent>           Zoom, 1-400 (default: 100). Above 100 the viewer scrolls sideways
 -p, --protocol <name>          Force the image protocol: kitty, iterm2, sixel, file
 -o, --output <file>            Save to a file instead of displaying: .png for an image, .html for a self-contained page
@@ -326,6 +327,26 @@ markterm loads MermaidJS from the jsDelivr CDN at render time, so any published 
 | Other versions | Any version available on jsDelivr can be specified. Not individually verified. |
 
 All diagram types provided by the selected MermaidJS version are supported: Flowchart, Sequence, Class, State, ER, Gantt, Pie, Git Graph, and more. The Mermaid theme is chosen automatically (`dark` for dark backgrounds, `default` for light ones).
+
+### ELK layout
+
+For diagrams with many edges from one node, Mermaid's default layout (dagre) can draw the edges on top of each other. Set `layout: elk` in the diagram's frontmatter to lay it out with ELK instead, which spreads the edges apart:
+
+````markdown
+```mermaid
+---
+config:
+  layout: elk
+  flowchart:
+    curve: step
+---
+flowchart LR
+  A --> B
+  A --> C
+```
+````
+
+markterm loads `@mermaid-js/layout-elk` from jsDelivr only when a diagram asks for it (`layout: elk` in the frontmatter, or `"layout": "elk"` in an `%%{init}%%` directive). Other documents load only MermaidJS, as before. If the ELK layout cannot be loaded, the diagrams are drawn with the default layout. It needs MermaidJS 11 or later.
 
 ## Environment Variables
 
