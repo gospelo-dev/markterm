@@ -31,7 +31,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          # "shell": the cache holds only the headless shell (see --only-shell below).
+          # Change the prefix when the installed browsers change.
+          key: playwright-shell-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
       # markterm launches Chromium headless, which uses only the headless shell.
       # --only-shell skips downloading the full Chrome for Testing build.
