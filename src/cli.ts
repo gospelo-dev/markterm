@@ -85,7 +85,8 @@ Options:
   -i, --image                    Print one inline image instead of opening the viewer
   -s, --scale <auto|factor>      Device scale factor. auto: the viewer matches the
                                  terminal's font size, image mode uses 2 (default: auto)
-      --mermaid <version>        MermaidJS version (default: 11.16.0)
+      --mermaid <version>        MermaidJS version (default: 11.16.0). Diagrams with
+                                 "layout: elk" also load the ELK layout
   -z, --zoom <percent>           Display zoom: 1-400% of terminal width (default: 100).
                                  Above 100 the viewer scrolls sideways; +/- change it
   -p, --protocol <name>          Force protocol: kitty, iterm2, sixel, file
