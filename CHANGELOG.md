@@ -2,6 +2,12 @@
 
 All notable changes to markterm are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Mermaid diagrams that set `layout: elk` (in the frontmatter, or `"layout": "elk"` in an `%%{init}%%` directive) are drawn with the ELK layout, which keeps edges from one node apart instead of drawing them on top of each other. markterm loads `@mermaid-js/layout-elk` from jsDelivr only for documents that ask for it, and falls back to Mermaid's default layout if it cannot be loaded. Needs MermaidJS 11 or later (#34)
+
 ## 0.7.0 - 2026-10-25
 
 ### Added
