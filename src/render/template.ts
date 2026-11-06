@@ -2,6 +2,8 @@ import type { ThemeColors } from "./themes.js"
 import { fallbackTheme } from "./themes.js"
 
 const MERMAID_VERSION = "11.16.0"
+/** @mermaid-js/layout-elk, loaded for diagrams that use `layout: elk`. */
+const ELK_VERSION = "0.2.3"
 
 export type TemplateOptions = {
   width?: number
@@ -126,15 +128,39 @@ export function buildHtml(markdownHtml: string, opts?: TemplateOptions): string 
 ${markdownHtml}
 ${o.interactive ? interactiveScript(o.interactive.baseUrl) : ""}${
     // Load MermaidJS (from the network) only for documents that have diagrams
-    markdownHtml.includes('class="mermaid"') ? mermaidScripts(o.mermaidVersion, c.mermaid) : ""
+    markdownHtml.includes('class="mermaid"') ? mermaidScripts(o.mermaidVersion, c.mermaid, markdownHtml) : ""
   }</body>
 </html>`
 }
 
-function mermaidScripts(version: string, theme: ThemeColors["mermaid"]): string {
-  return `<script src="https://cdn.jsdelivr.net/npm/mermaid@${version}/dist/mermaid.min.js"></script>
-<script>
+/** A diagram asks for the ELK layout (`layout: elk` in its frontmatter, or `"layout": "elk"` in an init directive). */
+const ELK_LAYOUT = /\blayout["']?\s*:\s*["']?elk/
+
+function mermaidScripts(
+  version: string,
+  theme: ThemeColors["mermaid"],
+  markdownHtml: string,
+): string {
+  const core = `<script src="https://cdn.jsdelivr.net/npm/mermaid@${version}/dist/mermaid.min.js"></script>
+`
+  if (!ELK_LAYOUT.test(markdownHtml)) {
+    return `${core}<script>
   mermaid.initialize({ startOnLoad: true, theme: '${theme}' });
+</script>
+`
+  }
+  // The ELK layout is a separate package. Load it only when a diagram asks for
+  // it, and draw the diagrams once it is registered. If it fails to load,
+  // Mermaid falls back to its default layout (dagre) instead of failing.
+  return `${core}<script type="module">
+  mermaid.initialize({ startOnLoad: false, theme: '${theme}' });
+  try {
+    const { default: elk } = await import("https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@${ELK_VERSION}/dist/mermaid-layout-elk.esm.min.mjs");
+    mermaid.registerLayoutLoaders(elk);
+  } catch (e) {
+    console.error("markterm: could not load the ELK layout for Mermaid", e);
+  }
+  await mermaid.run();
 </script>
 `
 }

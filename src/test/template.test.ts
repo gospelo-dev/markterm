@@ -27,6 +27,21 @@ describe("buildHtml", () => {
     expect(html).not.toContain("mermaid.initialize")
   })
 
+  test("loads the ELK layout only when a diagram asks for it", () => {
+    expect(buildHtml(`<p>x</p>${diagram}`)).not.toContain("layout-elk")
+
+    const elkDiagram = '<pre class="mermaid">---\nconfig:\n  layout: elk\n---\nflowchart LR\n  A --> B</pre>'
+    const html = buildHtml(elkDiagram)
+    expect(html).toContain("mermaid@11.16.0/dist/mermaid.min.js")
+    expect(html).toContain("@mermaid-js/layout-elk@0.2.3/dist/mermaid-layout-elk.esm.min.mjs")
+    expect(html).toContain("mermaid.registerLayoutLoaders(elk)")
+    expect(html).toContain("startOnLoad: false")
+    expect(html).toContain("await mermaid.run()")
+
+    const directive = '<pre class="mermaid">%%{init: {"layout": "elk"}}%%\nflowchart LR\n  A --> B</pre>'
+    expect(buildHtml(directive)).toContain("layout-elk")
+  })
+
   test("applies width, font size, colors and mermaid version options", () => {
     const html = buildHtml(`<p>y</p>${diagram}`, {
       width: 1200,
