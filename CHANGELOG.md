@@ -2,11 +2,12 @@
 
 All notable changes to markterm are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## 0.8.1 - 2026-11-06
 
 ### Changed
 
-- When Chromium has not been downloaded, the command markterm prints is `npx playwright@N.N.N install --only-shell chromium`. It downloads only the headless shell that markterm runs, and skips the full Chrome for Testing build (about 170 MB) that markterm does not use
+- When Chromium has not been downloaded, the command markterm prints is `npx playwright@N.N.N install --only-shell chromium`. It downloads only the headless shell that markterm runs, and skips the full Chrome for Testing build (about 170 MB) that markterm does not use (#39)
+- README, README_ja, QUICKSTART and QUICKSTART_ja install Chromium with `npx playwright install --only-shell chromium` (#39)
 
 ## 0.8.0 - 2026-11-06
 
