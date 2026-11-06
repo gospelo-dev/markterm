@@ -201,7 +201,8 @@ HTML、画像、PDF ファイルにはビューアが必要です。画像表示
 -i, --image                    ビューアを開かず、1 枚のインライン画像を表示する
 -s, --scale <auto|factor>      Chromium に渡すデバイススケール係数。auto: ビューアはターミナルの
                                フォントサイズに合わせ、画像表示モードは 2 (デフォルト: auto)
-    --mermaid <version>        jsDelivr からロードする MermaidJS バージョン (デフォルト: 11.16.0)
+    --mermaid <version>        jsDelivr からロードする MermaidJS バージョン (デフォルト: 11.16.0)。
+                               "layout: elk" の図では ELK レイアウトもロードする (MermaidJS サポートの節を参照)
 -z, --zoom <percent>           表示ズーム 1-400 (デフォルト: 100)。100 を超えるとビューアで横スクロール
 -p, --protocol <name>          画像プロトコルを強制: kitty, iterm2, sixel, file
 -o, --output <file>            表示せずファイルに保存: 画像は .png、自己完結ページは .html
@@ -326,6 +327,26 @@ MermaidJS はレンダリング時に jsDelivr CDN からロードするため�
 | その他 | jsDelivr で取得できるバージョンなら指定可能。個別の動作確認はしていません。 |
 
 選択した MermaidJS バージョンが提供する全ダイアグラムタイプに対応: Flowchart, Sequence, Class, State, ER, Gantt, Pie, Git Graph など。Mermaid のテーマは自動で選ばれます（暗い背景なら `dark`、明るい背景なら `default`）。
+
+### ELK レイアウト
+
+1 つのノードから多くの線が出る図では、Mermaid の標準のレイアウト (dagre) だと線が重なって描かれることがあります。図のフロントマターに `layout: elk` を書くと ELK でレイアウトされ、線が重ならないように離して描かれます。
+
+````markdown
+```mermaid
+---
+config:
+  layout: elk
+  flowchart:
+    curve: step
+---
+flowchart LR
+  A --> B
+  A --> C
+```
+````
+
+markterm は、図が ELK を指定しているとき (フロントマターの `layout: elk`、または `%%{init}%%` ディレクティブの `"layout": "elk"`) だけ、jsDelivr から `@mermaid-js/layout-elk` をロードします。それ以外の文書では、これまでどおり MermaidJS だけをロードします。ELK レイアウトをロードできなかった場合は、標準のレイアウトで描きます。MermaidJS 11 以降が必要です。
 
 ## 環境変数
 
