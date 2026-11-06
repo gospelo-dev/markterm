@@ -33,8 +33,10 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
+      # markterm launches Chromium headless, which uses only the headless shell.
+      # --only-shell skips downloading the full Chrome for Testing build.
       - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
+        run: bunx playwright install --with-deps --only-shell chromium
 
       - name: Typecheck
         run: bun run typecheck
