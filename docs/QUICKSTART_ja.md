@@ -20,8 +20,8 @@ npm install -g markterm
 markterm は Playwright を使ってヘッドレスブラウザで Markdown をレンダリングします。
 
 ```bash
-npx playwright install chromium
-# または: bunx playwright install chromium
+npx playwright install --only-shell chromium
+# または: bunx playwright install --only-shell chromium
 ```
 
 ## 3. (Sixel のみ) libsixel をインストール
@@ -195,7 +195,7 @@ markterm が使う Playwright が、まだダウンロードされていない C
 npx playwright@N.N.N install --only-shell chromium
 ```
 
-コマンドのバージョン指定が重要です。独自の Playwright を持つプロジェクトの中でバージョンなしの `npx playwright install chromium` を実行すると、そのプロジェクトのバージョン用のビルドがダウンロードされます。
+コマンドのバージョン指定が重要です。独自の Playwright を持つプロジェクトの中でバージョンなしの `npx playwright install --only-shell chromium` を実行すると、そのプロジェクトのバージョン用のビルドがダウンロードされます。
 
 `--only-shell` を付けると、markterm が使うヘッドレスシェルだけをダウンロードします。付けない場合は、markterm が使わない通常版の Chrome for Testing (約 170MB) もダウンロードされます。
 

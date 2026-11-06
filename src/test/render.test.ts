@@ -3,7 +3,7 @@ import { dispose, markdownToImage, markdownToImageBands, measureCutCandidates } 
 import { fallbackTheme } from "../render/themes.js"
 
 // Integration tests: these launch headless Chromium via Playwright.
-// Requires `bunx playwright install chromium`. The Mermaid case also needs network access.
+// Requires `bunx playwright install --only-shell chromium`. The Mermaid case also needs network access.
 
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 

@@ -20,8 +20,8 @@ The `markterm` command runs on Node.js. Without Node.js, use `bunx --bun markter
 markterm uses Playwright to render Markdown in a headless browser.
 
 ```bash
-npx playwright install chromium
-# or: bunx playwright install chromium
+npx playwright install --only-shell chromium
+# or: bunx playwright install --only-shell chromium
 ```
 
 ## 3. (Sixel only) Install libsixel
@@ -195,7 +195,7 @@ The Playwright that markterm uses expects a Chromium build that has not been dow
 npx playwright@N.N.N install --only-shell chromium
 ```
 
-The version in the command matters. A plain `npx playwright install chromium` run inside a project that has its own Playwright downloads the build for that project's version instead.
+The version in the command matters. A plain `npx playwright install --only-shell chromium` run inside a project that has its own Playwright downloads the build for that project's version instead.
 
 `--only-shell` downloads only the headless shell, which is the build markterm runs. Without it, the command also downloads the full Chrome for Testing build (about 170 MB), which markterm does not use.
 
