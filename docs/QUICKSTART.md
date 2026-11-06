@@ -192,10 +192,12 @@ Inside tmux or screen, image escape sequences generally do not reach the outer t
 The Playwright that markterm uses expects a Chromium build that has not been downloaded. Each Playwright version needs its own build, so this happens on a new install, and also after upgrading markterm, which can bring a newer Playwright. Run the command that the message prints:
 
 ```bash
-npx playwright@N.N.N install chromium
+npx playwright@N.N.N install --only-shell chromium
 ```
 
 The version in the command matters. A plain `npx playwright install chromium` run inside a project that has its own Playwright downloads the build for that project's version instead.
+
+`--only-shell` downloads only the headless shell, which is the build markterm runs. Without it, the command also downloads the full Chrome for Testing build (about 170 MB), which markterm does not use.
 
 markterm 0.6.0 and earlier print `browserType.launch: Executable doesn't exist at .../chromium_headless_shell-NNNN` and a stack trace instead of this message. The cause and the fix are the same; the version is the one in `node_modules/playwright/package.json` next to markterm.
 
