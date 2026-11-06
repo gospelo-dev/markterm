@@ -27,11 +27,13 @@ let browserInstance: Browser | null = null
 export class ChromiumMissingError extends Error {
   constructor(playwrightVersion: string | null) {
     // With the version, npx installs the build this Playwright needs even
-    // when it runs in a project that has another Playwright
+    // when it runs in a project that has another Playwright. markterm runs
+    // Chromium headless, which uses only the headless shell, so --only-shell
+    // skips the full Chrome for Testing build it would never use.
     const pkg = playwrightVersion ? `playwright@${playwrightVersion}` : "playwright"
     super(
       `Chromium${playwrightVersion ? ` for Playwright ${playwrightVersion}` : ""} is not installed. ` +
-        `Download it once with:\n\n  npx ${pkg} install chromium\n`,
+        `Download it once with:\n\n  npx ${pkg} install --only-shell chromium\n`,
     )
     this.name = "ChromiumMissingError"
   }

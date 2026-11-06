@@ -71,7 +71,7 @@ describe("markterm CLI", () => {
       const r = run([], "# Hi\n", { PLAYWRIGHT_BROWSERS_PATH: empty })
       expect(r.code).toBe(1)
       expect(r.stderr).toMatch(/^Chromium for Playwright \d+\.\d+\.\d+ is not installed\./)
-      expect(r.stderr).toMatch(/\n {2}npx playwright@\d+\.\d+\.\d+ install chromium\n/)
+      expect(r.stderr).toMatch(/\n {2}npx playwright@\d+\.\d+\.\d+ install --only-shell chromium\n/)
       expect(r.stderr).not.toContain("    at ")
       expect(r.stdout).toBe("")
     } finally {
