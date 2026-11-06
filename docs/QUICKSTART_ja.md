@@ -20,8 +20,8 @@ npm install -g markterm
 markterm は Playwright を使ってヘッドレスブラウザで Markdown をレンダリングします。
 
 ```bash
-npx playwright install chromium
-# または: bunx playwright install chromium
+npx playwright install --only-shell chromium
+# または: bunx playwright install --only-shell chromium
 ```
 
 ## 3. (Sixel のみ) libsixel をインストール
@@ -192,10 +192,12 @@ tmux や screen の中では、画像のエスケープシーケンスが通常�
 markterm が使う Playwright が、まだダウンロードされていない Chromium のビルドを探しています。Playwright はバージョンごとに専用のビルドを必要とするため、新規インストールのときのほか、markterm を更新して Playwright が新しくなったときにも起こります。メッセージに表示されたコマンドを実行してください。
 
 ```bash
-npx playwright@N.N.N install chromium
+npx playwright@N.N.N install --only-shell chromium
 ```
 
-コマンドのバージョン指定が重要です。独自の Playwright を持つプロジェクトの中でバージョンなしの `npx playwright install chromium` を実行すると、そのプロジェクトのバージョン用のビルドがダウンロードされます。
+コマンドのバージョン指定が重要です。独自の Playwright を持つプロジェクトの中でバージョンなしの `npx playwright install --only-shell chromium` を実行すると、そのプロジェクトのバージョン用のビルドがダウンロードされます。
+
+`--only-shell` を付けると、markterm が使うヘッドレスシェルだけをダウンロードします。付けない場合は、markterm が使わない通常版の Chrome for Testing (約 170MB) もダウンロードされます。
 
 markterm 0.6.0 以前では、このメッセージの代わりに `browserType.launch: Executable doesn't exist at .../chromium_headless_shell-NNNN` とスタックトレースが表示されます。原因と対処は同じで、バージョンは markterm と一緒に入っている `node_modules/playwright/package.json` で確認できます。
 
